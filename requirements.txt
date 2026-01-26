@@ -1,0 +1,5 @@
+open_spiel>=1.2.0
+torch>=2.0.0
+numpy<2.0.0
+wandb>=0.15.0
+pytest>=7.0.0
