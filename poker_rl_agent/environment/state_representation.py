@@ -61,7 +61,14 @@ class StateEncoder:
         # Placeholder:
         pot = 0.0 # Extract
         stack = 0.0 # Extract
-        scalars = torch.tensor([pot, stack], dtype=torch.float32, device=self.device)
+        
+        # Normalization (Phase 1 Fixes)
+        pot_norm = pot / 10000.0
+        stack_norm = stack / 10000.0
+        # If bet amount exists, normalize it relative to pot
+        # bet_norm = bet / max(pot, 1.0) 
+        
+        scalars = torch.tensor([pot_norm, stack_norm], dtype=torch.float32, device=self.device)
 
         return {
             "hole_cards": hole_cards_tensor,

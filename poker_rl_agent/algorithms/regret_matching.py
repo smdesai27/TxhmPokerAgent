@@ -13,16 +13,23 @@ def regret_matching_plus(regrets: torch.Tensor) -> torch.Tensor:
         strategy: [Batch, NumActions] (Probability distribution)
     """
     # RM+: Strategy is proportional to positive regrets
+    
+    # 1. Clip Regrets to avoid explosion/NaNs
+    # Large regrets can occur if values explode. Clipping effectively limits the "momentum".
+    regrets = torch.clamp(regrets, min=-1e9, max=1e9)
+    
     positive_regrets = torch.relu(regrets)
     sum_pos_regrets = torch.sum(positive_regrets, dim=1, keepdim=True)
     
     # Check for zero sums (exploration)
     # If all regrets <= 0, use uniform random strategy
-    uniform = torch.ones_like(regrets) / regrets.shape[1]
+    num_actions = regrets.shape[1]
+    uniform = torch.ones_like(regrets) / num_actions
     
+    # Safe division
     strategy = torch.where(
         sum_pos_regrets > 1e-8,
-        positive_regrets / sum_pos_regrets,
+        positive_regrets / (sum_pos_regrets + 1e-12),
         uniform
     )
     

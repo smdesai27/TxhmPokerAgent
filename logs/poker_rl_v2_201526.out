@@ -1,0 +1,13 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 201526
+##  Job Name : poker_rl_v2
+##  Nodelist : gpu2110
+##      CPUs : 1
+##  Mem/Node : 32768 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Wed Jan 28 01:08:11 PM EST 2026
+###############################################################################
+Job: poker_rl_v2 (201526)
+Node: gpu2110
+Date: Wed Jan 28 01:08:11 PM EST 2026
+-------------------

@@ -68,3 +68,30 @@ python poker_rl_agent/scripts/play_against_agent.py
 ## ⚠️ Notes
 - Training generally requires `open_spiel`'s `universal_poker` game with an ACPC definition for full HUNL. By default, this repo falls back to `leduc_poker` or simplified config if HUNL isn't fully configured in your OpenSpiel install.
 - Deep CFR requires significant compute.
+- WandB logging is enabled by default. Set `WANDB_mode=offline` if needed.
+
+## 🔧 Advanced Configuration & Troubleshooting
+If you encounter instability (diverging loss, NaN values), use the robust configuration system.
+
+### Running with Presets
+We provide a `scripts/debug_training.py` that supports YAML-based configs:
+```bash
+# Run with 'debug' preset (small net, short run)
+python scripts/debug_training.py --config_name debug
+
+# Run with 'default' robust preset (LayerNorm, TargetNet, Scheduler)
+python scripts/debug_training.py --config_name default
+```
+
+### Ablation Studies
+Modify `configs/training_configs.yaml` to create new presets. Available debugging features:
+- **Target Network**: Stabilizes targets (`USE_TARGET_NET: true`).
+- **Gradient Clipping**: Prevents exploding gradients (`GRAD_CLIP: 1.0`).
+- **Detailed Logging**: Logs weight norms and gradients to WandB.
+- **Checkpointing**: Limits disk usage by keeping only the latest N checkpoints (`MAX_CHECKPOINTS: 5`).
+
+### Troubleshooting Guide
+- **Loss Increases**: Try lowering LR (`LR: 1e-4`) or enabling `USE_TARGET_NET`.
+- **NaN Values**: Reduce `LR`, ensure `GRAD_CLIP` is on, or check `Regret Matching` code for zero division.
+- **Disk Full**: Reduce `MAX_CHECKPOINTS` in config.
+

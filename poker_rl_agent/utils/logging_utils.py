@@ -15,9 +15,22 @@ def setup_logger(name="PokerRL"):
         
     return logger
 
-def init_wandb(project_name="alpha-holdem-poker", run_name=None):
+def init_wandb(project_name="alpha-holdem-poker", run_name=None, config=None):
     """Initializes WandB logging."""
-    config_dict = Config.to_dict()
+    if config:
+        # Convert dataclass instance to dict if possible
+        if hasattr(config, 'to_dict_instance'):
+            config_dict = config.to_dict_instance()
+        elif hasattr(config, 'to_dict'):
+            config_dict = config.to_dict()
+        else:
+            try:
+                config_dict = config.__dict__
+            except:
+                config_dict = {}
+    else:
+        config_dict = Config.to_dict()
+
     wandb.init(
         project=project_name,
         name=run_name,

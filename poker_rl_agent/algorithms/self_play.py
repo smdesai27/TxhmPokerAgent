@@ -92,10 +92,18 @@ class SelfPlayWorker:
             
             # Compute Regrets
             # Regret = Q(s, a) - V(s)
+            
+            # SCALING: Normalize regrets by stack size (approx 20000)
+            # This brings gradients to reasonable range [-1, 1]
+            SCALING_FACTOR = 20000.0
+            
             state_regrets = torch.zeros(self.env.num_actions())
             for idx, action in enumerate(legal_actions):
                 r = values[action] - node_utility
-                state_regrets[action] = r
+                state_regrets[action] = r / SCALING_FACTOR
+            
+            # Regret Clipping (Phase 3 Fix)
+            state_regrets = torch.clamp(state_regrets, min=-10000.0, max=10000.0)
                 
             # Store (state_tensor, state_regrets)
             # We assume samples_accumulator is a list passed in

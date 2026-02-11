@@ -21,12 +21,13 @@ class PokerEnv:
             # 2 players, No Limit, 100/200 blinds (example), stack 20000.
             self.game_config = {
                 "betting": "nolimit",
-                "players": 2,
-                "stack": 20000,
-                "blind": [50, 100],
-                "first_player": 1,
-                "num_rounds": 4,  # Preflop, Flop, Turn, River
-                "max_raises": 0,   # 0 usually means unlimited in some definitions, or we set high
+                "numPlayers": 2,
+                "stack": "20000 20000",
+                "blind": "50 100",
+                "firstPlayer": "1",
+                "numRounds": 4,  # Preflop, Flop, Turn, River
+                "numBoardCards": "0 3 1 1",
+                "maxRaises": "0",   # 0 usually means unlimited in some definitions, or we set high
             }
         else:
             self.game_config = config

@@ -1,0 +1,13 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 195904
+##  Job Name : poker_rl_stabilized
+##  Nodelist : gpu2250
+##      CPUs : 1
+##  Mem/Node : 32768 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Tue Jan 27 05:22:22 PM EST 2026
+###############################################################################
+Job: poker_rl_stabilized (195904)
+Node: gpu2250
+Date: Tue Jan 27 05:22:22 PM EST 2026
+-------------------
