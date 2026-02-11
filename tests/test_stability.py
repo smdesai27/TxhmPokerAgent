@@ -105,3 +105,15 @@ def test_short_training_smoke_run():
 
     for param in trainer.model.parameters():
         assert not torch.isnan(param).any()
+
+
+def test_masked_logits_fp16_safe():
+    logits = torch.tensor([[0.1, -0.2, 0.3, 0.4]], dtype=torch.float16)
+    legal = torch.tensor([[1.0, 0.0, 1.0, 0.0]], dtype=torch.float16)
+    masked = masked_logits(logits, legal)
+
+    # Should not overflow and illegal actions should be very negative.
+    assert not torch.isnan(masked).any()
+    assert masked.dtype == torch.float16
+    assert masked[0, 1] < -1000
+    assert masked[0, 3] < -1000
