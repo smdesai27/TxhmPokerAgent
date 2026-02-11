@@ -117,3 +117,32 @@ def test_masked_logits_fp16_safe():
     assert masked.dtype == torch.float16
     assert masked[0, 1] < -1000
     assert masked[0, 3] < -1000
+
+
+def test_minimal_single_file_checkpoint_mode():
+    # Clean test artifacts from previous runs.
+    os.makedirs("checkpoints", exist_ok=True)
+    for file_name in os.listdir("checkpoints"):
+        if file_name.endswith(".pt"):
+            os.remove(os.path.join("checkpoints", file_name))
+
+    cfg = _test_config()
+    cfg.CFR_ITERATIONS = 2
+    cfg.CHECKPOINT_FREQ = 1
+    cfg.CHECKPOINT_SINGLE_FILE = True
+    cfg.MAX_CHECKPOINTS = 1
+    cfg.CHECKPOINT_SAVE_OPTIMIZER = False
+    cfg.CHECKPOINT_SAVE_SCHEDULER = False
+    cfg.CHECKPOINT_SAVE_LEAGUE = False
+    cfg.CHECKPOINT_SAVE_EXTRA = False
+
+    trainer = Trainer(cfg)
+    trainer.train()
+
+    checkpoint_files = [f for f in os.listdir("checkpoints") if f.endswith(".pt")]
+    assert checkpoint_files == ["latest.pt"]
+
+    payload = torch.load(os.path.join("checkpoints", "latest.pt"), map_location="cpu")
+    assert payload.get("optimizer_state_dict") is None
+    assert payload.get("scheduler_state_dict") is None
+    assert payload.get("league_state") == {}

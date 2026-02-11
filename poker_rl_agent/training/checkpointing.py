@@ -29,6 +29,11 @@ def save_checkpoint(
     scheduler,
     path,
     max_keep=5,
+    single_file=False,
+    save_optimizer=True,
+    save_scheduler=True,
+    save_league=True,
+    save_extra=True,
     league_state: Optional[Dict[str, Any]] = None,
     config: Optional[Any] = None,
     extra: Optional[Dict[str, Any]] = None,
@@ -41,14 +46,33 @@ def save_checkpoint(
     payload = {
         "format_version": CHECKPOINT_FORMAT_VERSION,
         "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict() if optimizer is not None else None,
-        "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
+        "optimizer_state_dict": (
+            optimizer.state_dict() if (save_optimizer and optimizer is not None) else None
+        ),
+        "scheduler_state_dict": (
+            scheduler.state_dict() if (save_scheduler and scheduler is not None) else None
+        ),
         "step": int(step),
-        "league_state": league_state or {},
+        "league_state": league_state if save_league else {},
         "config_hash": _config_hash(config),
-        "extra": extra or {},
+        "extra": extra if save_extra else {},
     }
     torch.save(payload, path)
+
+    if single_file:
+        # Minimal-storage mode: keep only the rolling file.
+        try:
+            keep_name = os.path.basename(path)
+            for file_name in os.listdir(dirname or "."):
+                if file_name.endswith(".pt") and file_name != keep_name:
+                    full_path = os.path.join(dirname, file_name) if dirname else file_name
+                    try:
+                        os.remove(full_path)
+                    except OSError:
+                        pass
+        except Exception:
+            pass
+        return
 
     # Cleanup old point_<step>.pt style checkpoints.
     try:

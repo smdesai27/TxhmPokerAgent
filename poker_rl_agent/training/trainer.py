@@ -303,7 +303,10 @@ class Trainer:
         }
 
     def _save_checkpoint(self, step: int, extra_metrics: Dict[str, float]):
-        path = os.path.join("checkpoints", f"point_{step}.pt")
+        if self.config.CHECKPOINT_SINGLE_FILE:
+            path = os.path.join("checkpoints", "latest.pt")
+        else:
+            path = os.path.join("checkpoints", f"point_{step}.pt")
         save_checkpoint(
             model=self.model,
             optimizer=self.optimizer,
@@ -311,17 +314,27 @@ class Trainer:
             step=step,
             path=path,
             max_keep=self.config.MAX_CHECKPOINTS,
-            league_state=self.league.state_dict(),
+            single_file=self.config.CHECKPOINT_SINGLE_FILE,
+            save_optimizer=self.config.CHECKPOINT_SAVE_OPTIMIZER,
+            save_scheduler=self.config.CHECKPOINT_SAVE_SCHEDULER,
+            save_league=self.config.CHECKPOINT_SAVE_LEAGUE,
+            save_extra=self.config.CHECKPOINT_SAVE_EXTRA,
+            league_state=self.league.state_dict() if self.config.CHECKPOINT_SAVE_LEAGUE else {},
             config=self.config,
-            extra=extra_metrics,
+            extra=extra_metrics if self.config.CHECKPOINT_SAVE_EXTRA else {},
         )
 
     def _maybe_resume(self):
-        if not self.config.RESUME_FROM:
+        checkpoint_path = self.config.RESUME_FROM
+        if not checkpoint_path and self.config.CHECKPOINT_SINGLE_FILE:
+            candidate = os.path.join("checkpoints", "latest.pt")
+            if os.path.exists(candidate):
+                checkpoint_path = candidate
+        if not checkpoint_path:
             return 0
 
         payload = load_checkpoint(
-            path=self.config.RESUME_FROM,
+            path=checkpoint_path,
             model=self.model,
             optimizer=self.optimizer,
             scheduler=self.scheduler,

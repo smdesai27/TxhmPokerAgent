@@ -74,6 +74,11 @@ class Config:
     # Checkpointing / logging
     CHECKPOINT_FREQ: int = 50
     MAX_CHECKPOINTS: int = 10
+    CHECKPOINT_SINGLE_FILE: bool = False
+    CHECKPOINT_SAVE_OPTIMIZER: bool = True
+    CHECKPOINT_SAVE_SCHEDULER: bool = True
+    CHECKPOINT_SAVE_LEAGUE: bool = True
+    CHECKPOINT_SAVE_EXTRA: bool = True
     LOG_INTERVAL: int = 5
     RUN_DIR: str = "."
     RESUME_FROM: str = ""
