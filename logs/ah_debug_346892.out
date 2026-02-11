@@ -1,0 +1,12 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 346892
+##  Job Name : ah_debug
+##  Nodelist : gpu2250
+##      CPUs : 1
+##  Mem/Node : 16384 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Wed Feb 11 03:35:50 PM EST 2026
+###############################################################################
+Optional module pokerkit_wrapper was not importable: No module named 'pokerkit'
+Loaded Config: debug
+Config(GAME_NAME='universal_poker', ENV_PRESET='hunl_fcpa', BETTING_ABSTRACTION='fcpa', PLAYERS=2, STACK_SIZE=20000, SMALL_BLIND=50, BIG_BLIND=100, MAX_ACTION_HISTORY=64, NUM_ACTORS=1, EMBEDDING_DIM=64, HIDDEN_DIM=64, NUM_LAYERS_CARD=2, NUM_LAYERS_ACTION=1, DROPOUT=0.1, USE_LAYERNORM=True, USE_RESIDUAL=True, SCALAR_DIM=11, ALGO='ppo_ksp', CFR_ITERATIONS=10, ROLLOUT_EPISODES=8, SELF_PLAY_GAMES=20, PPO_EPOCHS=1, PPO_MINIBATCH_SIZE=32, PPO_CLIP_EPS=0.2, PPO_GAMMA=0.995, PPO_GAE_LAMBDA=0.95, PPO_VALUE_COEF=0.5, PPO_ENTROPY_COEF=0.01, PPO_TARGET_KL=0.03, K_BEST=8, LEAGUE_INIT_RATING=1200.0, LEAGUE_K_FACTOR=24.0, PFSP_BETA=2.0, SNAPSHOT_INTERVAL=50, LR=0.0003, WEIGHT_DECAY=1e-05, BATCH_SIZE=256, BUFFER_SIZE=500000, GRAD_CLIP=1.0, GRAD_ACCUM_STEPS=1, AMP=True, LR_SCHEDULER='none', EVAL_FREQ=1000, EVAL_EPISODES=200, EVAL_CFR_ITERATIONS=300, BB_SIZE=100.0, CHECKPOINT_FREQ=5, MAX_CHECKPOINTS=10, LOG_INTERVAL=1, RUN_DIR='.', RESUME_FROM='', WANDB_PROJECT='alpha-holdem-poker', WANDB_RUN_NAME='', WANDB_MODE='disabled', OFFLINE_LOGGING=True, SEED=42, DEVICE='cuda')
