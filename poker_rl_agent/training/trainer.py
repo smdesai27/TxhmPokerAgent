@@ -1,177 +1,370 @@
-import torch
-import torch.optim as optim
 import os
-import copy
-import wandb
-from ..models.alpha_holdem_net import AlphaHoldemNetwork
+import random
+from typing import Dict
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+import torch.optim as optim
+from torch.distributions import Categorical
+
 from ..algorithms.self_play import SelfPlayWorker
-from ..training.replay_buffer import ReplayBuffer
-from ..training.checkpointing import save_checkpoint, load_checkpoint
 from ..environment.openspiel_wrapper import PokerEnv
+from ..evaluation.baseline_agents import RandomAgent
+from ..evaluation.evaluator import Evaluator
+from ..models.alpha_holdem_net import AlphaHoldemNetwork
+from ..models.model_utils import masked_logits
+from ..training.checkpointing import load_checkpoint, save_checkpoint
+from ..training.league_manager import LeagueManager
+from ..training.rollout_buffer import RolloutBuffer
 from ..utils.config import Config
-from ..utils.logging_utils import log_metrics, init_wandb
+from ..utils.logging_utils import init_wandb, log_metrics, log_metrics_local
+
 
 class Trainer:
     def __init__(self, config=None):
         self.config = config if config else Config()
         self.device = self.config.DEVICE
-        
-        # Env
-        self.env = PokerEnv(self.config.GAME_NAME)
-        num_actions = self.env.num_actions()
-        
-        # Models
-        print(f"Initializing Model on {self.device}")
-        self.model = AlphaHoldemNetwork(num_actions, self.config).to(self.device)
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.config.LR)
-        
-        # Target Network
-        if self.config.USE_TARGET_NET:
-            self.target_model = copy.deepcopy(self.model)
-            self.target_model.to(self.device)
-            self.target_model.eval()
-        else:
-            self.target_model = self.model
-            
-        # Scheduler
+        self._set_seed(self.config.SEED)
+
+        self.env = PokerEnv(
+            game_name=self.config.GAME_NAME,
+            env_preset=self.config.ENV_PRESET,
+            betting_abstraction=self.config.BETTING_ABSTRACTION,
+        )
+        self.num_actions = self.env.num_actions()
+
+        self.model = AlphaHoldemNetwork(self.num_actions, self.config).to(self.device)
+        self.optimizer = optim.Adam(
+            self.model.parameters(),
+            lr=self.config.LR,
+            weight_decay=self.config.WEIGHT_DECAY,
+        )
+
+        self.scheduler = None
         if self.config.LR_SCHEDULER == "plateau":
             self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-                self.optimizer, mode='min', factor=0.5, patience=1000
+                self.optimizer,
+                mode="max",
+                factor=0.5,
+                patience=10,
             )
-        else:
-            self.scheduler = None
-        
-        # Buffer
-        self.buffer = ReplayBuffer(self.config.BUFFER_SIZE)
-        
-        # Workers - Use TARGET model for data collection to stabilize policy
-        self.worker = SelfPlayWorker(self.env, self.target_model, self.device)
-        
-    def _soft_update_target(self):
-        """Soft update target network parameters."""
-        tau = self.config.TARGET_UPDATE_TAU
-        for target_param, param in zip(self.target_model.parameters(), self.model.parameters()):
-            target_param.data.copy_(tau * param.data + (1.0 - tau) * target_param.data)
+
+        self.amp_enabled = self.config.AMP and str(self.device).startswith("cuda")
+        self.scaler = torch.amp.GradScaler("cuda", enabled=self.amp_enabled)
+
+        worker_env = PokerEnv(
+            game_name=self.config.GAME_NAME,
+            env_preset=self.config.ENV_PRESET,
+            betting_abstraction=self.config.BETTING_ABSTRACTION,
+        )
+        self.worker = SelfPlayWorker(
+            worker_env,
+            device=self.device,
+            max_action_history=self.config.MAX_ACTION_HISTORY,
+        )
+        self.rollout_buffer = RolloutBuffer()
+
+        self.league = LeagueManager(
+            k_best=self.config.K_BEST,
+            init_rating=self.config.LEAGUE_INIT_RATING,
+            k_factor=self.config.LEAGUE_K_FACTOR,
+            pfsp_beta=self.config.PFSP_BETA,
+        )
+        self.league.add_snapshot(self.model, step=0, score=0.0)
+        self._opponent_cache = {}
+
+        self.evaluator = Evaluator(self.model, self.config, device=self.device)
+        self.global_step = 0
+
+    @staticmethod
+    def _set_seed(seed: int):
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+
+    def _build_model_clone(self):
+        model = AlphaHoldemNetwork(self.num_actions, self.config).to(self.device)
+        model.eval()
+        return model
+
+    def _get_opponent_model(self, entry):
+        cached = self._opponent_cache.get(entry.entry_id)
+        if cached and cached[0] == entry.step:
+            return cached[1]
+
+        model = self._build_model_clone()
+        model.load_state_dict(entry.state_dict)
+        self._opponent_cache[entry.entry_id] = (entry.step, model)
+        return model
+
+    def _collect_rollouts(self):
+        self.rollout_buffer.clear()
+        returns = []
+
+        self.model.eval()
+        for _ in range(self.config.ROLLOUT_EPISODES):
+            opponent_entry = self.league.sample_opponent()
+            opponent_model = self.model if opponent_entry is None else self._get_opponent_model(opponent_entry)
+
+            episode_transitions, final_return, _ = self.worker.generate_episode(
+                policy_model=self.model,
+                opponent_model=opponent_model,
+                train_player=None,
+                bb_size=self.config.BB_SIZE,
+            )
+
+            for transition in episode_transitions:
+                self.rollout_buffer.add(
+                    state=transition["state"],
+                    action=transition["action"],
+                    reward=transition["reward"],
+                    done=bool(transition["done"]),
+                    log_prob=transition["log_prob"],
+                    value=transition["value"],
+                )
+
+            returns.append(final_return)
+
+            if opponent_entry is not None:
+                if final_return > 0:
+                    result = 1.0
+                elif final_return < 0:
+                    result = 0.0
+                else:
+                    result = 0.5
+                self.league.update_elo(opponent_entry.entry_id, result)
+
+        mean_return = float(np.mean(returns)) if returns else 0.0
+        return {
+            "rollout/episodes": len(returns),
+            "rollout/mean_final_return_bb": mean_return,
+            "rollout/transitions": len(self.rollout_buffer),
+            "league/current_elo": self.league.current_rating,
+        }
+
+    def _to_device(self, batch_states: Dict[str, torch.Tensor]):
+        return {k: v.to(self.device) for k, v in batch_states.items()}
+
+    def _ppo_update(self):
+        if len(self.rollout_buffer) == 0:
+            return {"train/updates": 0}
+
+        self.model.train()
+        advantages, returns = self.rollout_buffer.compute_advantages(
+            gamma=self.config.PPO_GAMMA,
+            gae_lambda=self.config.PPO_GAE_LAMBDA,
+        )
+
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+        total_policy_loss = 0.0
+        total_value_loss = 0.0
+        total_entropy = 0.0
+        total_kl = 0.0
+        total_grad_norm = 0.0
+        minibatch_count = 0
+        optimizer_updates = 0
+
+        self.optimizer.zero_grad(set_to_none=True)
+        grad_accum = max(1, int(self.config.GRAD_ACCUM_STEPS))
+        accum = 0
+        early_stop = False
+
+        for _ in range(self.config.PPO_EPOCHS):
+            for batch in self.rollout_buffer.iterate_minibatches(
+                minibatch_size=self.config.PPO_MINIBATCH_SIZE,
+                advantages=advantages,
+                returns=returns,
+                shuffle=True,
+            ):
+                states = self._to_device(batch["states"])
+                actions = batch["actions"].to(self.device)
+                old_log_probs = batch["old_log_probs"].to(self.device)
+                adv = batch["advantages"].to(self.device)
+                target_returns = batch["returns"].to(self.device)
+
+                with torch.amp.autocast(device_type="cuda", enabled=self.amp_enabled):
+                    outputs = self.model(states)
+                    logits = masked_logits(outputs["policy_logits"], states["legal_action_mask"])
+                    dist = Categorical(logits=logits)
+
+                    new_log_probs = dist.log_prob(actions)
+                    entropy = dist.entropy().mean()
+
+                    ratio = torch.exp(new_log_probs - old_log_probs)
+                    surr1 = ratio * adv
+                    surr2 = torch.clamp(
+                        ratio,
+                        1.0 - self.config.PPO_CLIP_EPS,
+                        1.0 + self.config.PPO_CLIP_EPS,
+                    ) * adv
+                    policy_loss = -torch.min(surr1, surr2).mean()
+
+                    value_pred = outputs["state_value"]
+                    value_loss = F.mse_loss(value_pred, target_returns)
+
+                    loss = (
+                        policy_loss
+                        + self.config.PPO_VALUE_COEF * value_loss
+                        - self.config.PPO_ENTROPY_COEF * entropy
+                    ) / grad_accum
+
+                approx_kl = (old_log_probs - new_log_probs).mean().item()
+
+                if self.amp_enabled:
+                    self.scaler.scale(loss).backward()
+                else:
+                    loss.backward()
+
+                accum += 1
+                minibatch_count += 1
+                total_policy_loss += float(policy_loss.item())
+                total_value_loss += float(value_loss.item())
+                total_entropy += float(entropy.item())
+                total_kl += float(approx_kl)
+
+                if accum % grad_accum == 0:
+                    if self.amp_enabled:
+                        self.scaler.unscale_(self.optimizer)
+                    grad_norm = torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(),
+                        self.config.GRAD_CLIP,
+                    )
+
+                    if self.amp_enabled:
+                        self.scaler.step(self.optimizer)
+                        self.scaler.update()
+                    else:
+                        self.optimizer.step()
+                    self.optimizer.zero_grad(set_to_none=True)
+
+                    optimizer_updates += 1
+                    total_grad_norm += float(grad_norm.item())
+
+                if approx_kl > self.config.PPO_TARGET_KL:
+                    early_stop = True
+                    break
+
+            if early_stop:
+                break
+
+        if accum % grad_accum != 0:
+            if self.amp_enabled:
+                self.scaler.unscale_(self.optimizer)
+            grad_norm = torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(),
+                self.config.GRAD_CLIP,
+            )
+            if self.amp_enabled:
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
+                self.optimizer.step()
+            self.optimizer.zero_grad(set_to_none=True)
+            optimizer_updates += 1
+            total_grad_norm += float(grad_norm.item())
+
+        if self.scheduler is not None and minibatch_count > 0:
+            # Scheduler tracks performance (higher is better), use negative value loss proxy.
+            self.scheduler.step(-(total_value_loss / minibatch_count))
+
+        denom = max(1, minibatch_count)
+        return {
+            "train/updates": optimizer_updates,
+            "train/policy_loss": total_policy_loss / denom,
+            "train/value_loss": total_value_loss / denom,
+            "train/entropy": total_entropy / denom,
+            "train/approx_kl": total_kl / denom,
+            "train/grad_norm": total_grad_norm / max(1, optimizer_updates),
+        }
+
+    def _evaluate(self):
+        self.model.eval()
+        random_stats = self.evaluator.evaluate(RandomAgent(), num_episodes=max(20, self.config.EVAL_EPISODES // 2))
+        cfr_stats = self.evaluator.evaluate_vs_cfr(
+            iterations=self.config.EVAL_CFR_ITERATIONS,
+            num_episodes=self.config.EVAL_EPISODES,
+        )
+        try:
+            nash_conv = self.evaluator.evaluate_nash_conv()
+        except Exception:
+            nash_conv = float("nan")
+
+        return {
+            "eval/random_bb100": random_stats["bb_per_100"],
+            "eval/random_avg_return": random_stats["avg_return"],
+            "eval/cfr_bb100": cfr_stats["bb_per_100"],
+            "eval/cfr_avg_return": cfr_stats["avg_return"],
+            "eval/cfr_stderr": cfr_stats["std_err"],
+            "eval/nash_conv": nash_conv,
+        }
+
+    def _save_checkpoint(self, step: int, extra_metrics: Dict[str, float]):
+        path = os.path.join("checkpoints", f"point_{step}.pt")
+        save_checkpoint(
+            model=self.model,
+            optimizer=self.optimizer,
+            scheduler=self.scheduler,
+            step=step,
+            path=path,
+            max_keep=self.config.MAX_CHECKPOINTS,
+            league_state=self.league.state_dict(),
+            config=self.config,
+            extra=extra_metrics,
+        )
+
+    def _maybe_resume(self):
+        if not self.config.RESUME_FROM:
+            return 0
+
+        payload = load_checkpoint(
+            path=self.config.RESUME_FROM,
+            model=self.model,
+            optimizer=self.optimizer,
+            scheduler=self.scheduler,
+            map_location=self.device,
+        )
+        league_state = payload.get("league_state", {})
+        if league_state:
+            self.league.load_state_dict(league_state)
+            self._opponent_cache.clear()
+        return int(payload.get("step", 0))
 
     def train(self):
         init_wandb(config=self.config)
-        step = 0
-        
-        # Load Checkpoint if exists
-        if os.path.exists("checkpoints"):
-             # Find latest
-            pass # TODO: Implement load logic if needed
-        
-        print(f"Starting Training with {self.config.CFR_ITERATIONS} iterations...")
+        start_step = self._maybe_resume()
 
-        for iteration in range(self.config.CFR_ITERATIONS):
-            # 1. Self Play / Data Collection
-            for _ in range(self.config.SELF_PLAY_GAMES):
-                for player in range(self.config.PLAYERS):
-                    samples = self.worker.run_external_sampling(player)
-                    for s_tensor, regrets in samples:
-                        self.buffer.add(s_tensor, None, regrets, None)
+        for iteration in range(start_step, self.config.CFR_ITERATIONS):
+            metrics = {"iteration": iteration + 1, "lr": self.optimizer.param_groups[0]["lr"]}
 
-            # 2. Train Network
-            if len(self.buffer) < self.config.BATCH_SIZE:
-                continue
-                
-            loss_sum = 0
-            grad_norm_sum = 0
-            pad_config = {'action_history': self.env.num_actions()}
-            
-            # Train steps per iteration (can be config driven)
-            TRAIN_STEPS = 10 
-            
-            for _ in range(TRAIN_STEPS):
-                state_dicts, _, target_regrets, _ = self.buffer.sample(self.config.BATCH_SIZE, pad_config)
-                
-                # Move to device
-                for k, v in state_dicts.items():
-                    if k != 'action_history':
-                         if v.dim() == 3 and v.size(1) == 1:
-                            v = v.squeeze(1)
-                    state_dicts[k] = v.to(self.device)
-                
-                target_regrets = target_regrets.to(self.device)
-                
-                # Norm Target Regrets (Phase 3 Fix)
-                # (regrets - mean) / (std + 1e-8)
-                regret_mean = target_regrets.mean()
-                regret_std = target_regrets.std() + 1e-8
-                target_regrets = (target_regrets - regret_mean) / regret_std
-                
-                self.optimizer.zero_grad()
-                pred_regrets = self.model(state_dicts)
-                
-                loss = torch.nn.functional.mse_loss(pred_regrets, target_regrets)
-                
-                # SAFETY: Check for NaN/Inf loss
-                if torch.isnan(loss) or torch.isinf(loss):
-                    print(f"CRITICAL: Loss is NaN/Inf at step {step}!")
-                    # Check inputs/targets
-                    print(f"Target Regrets stats: Min={target_regrets.min()}, Max={target_regrets.max()}, Mean={target_regrets.mean()}")
-                    # Zero out loss to prevent crash? Or raise?
-                    # For emergency fix, we raise to stop bad training
-                    raise ValueError("Loss is NaN/Inf")
+            rollout_metrics = self._collect_rollouts()
+            metrics.update(rollout_metrics)
 
-                loss.backward()
-                
-                # Gradient Clipping (Phase 3 Fix)
-                # Calculate unclipped norm for logging
-                total_norm_unclipped = 0.0
-                for p in self.model.parameters():
-                    if p.grad is not None:
-                        total_norm_unclipped += p.grad.data.norm(2).item() ** 2
-                total_norm_unclipped = total_norm_unclipped ** 0.5
+            update_metrics = self._ppo_update()
+            metrics.update(update_metrics)
 
-                grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.GRAD_CLIP)
-                grad_norm_sum += grad_norm.item()
-                
-                # SAFETY: Check for NaN/Inf gradients
-                if torch.isnan(grad_norm) or torch.isinf(grad_norm):
-                     raise ValueError(f"Gradient is NaN/Inf: {grad_norm}")
-                
-                self.optimizer.step()
-                
-                if self.config.USE_TARGET_NET:
-                    self._soft_update_target()
-                    
-                loss_sum += loss.item()
-            
-            # Valid / Scheduler step
-            avg_loss = loss_sum / TRAIN_STEPS
-            if self.scheduler:
-                self.scheduler.step(avg_loss)
+            if (iteration + 1) % self.config.SNAPSHOT_INTERVAL == 0:
+                snapshot_score = rollout_metrics.get("rollout/mean_final_return_bb", 0.0)
+                self.league.add_snapshot(self.model, step=iteration + 1, score=snapshot_score)
+                self._opponent_cache.clear()
+                metrics["league/size"] = len(self.league.entries)
 
-            step += 1
-            if step % self.config.LOG_INTERVAL == 0:
-                metrics = {
-                    'loss': avg_loss,
-                    'grad_norm_clipped': grad_norm_sum / TRAIN_STEPS,
-                    # We only captured unclipped for the last step in the loop above really, 
-                    # but good enough for diagnosis if we move it out or average it.
-                    # For now just log clipped.
-                    'iteration': iteration,
-                    'buffer_size': len(self.buffer),
-                    'lr': self.optimizer.param_groups[0]['lr'],
-                    # Input/target stats (from last batch)
-                    'target_regret_mean': regret_mean.item(),
-                    'target_regret_std': regret_std.item()
-                }
-                
-                # Log weight norms periodically
-                if step % 100 == 0:
-                     for name, param in self.model.named_parameters():
-                        if param.requires_grad:
-                            metrics[f'weight_norm/{name}'] = param.norm().item()
-                            
-                log_metrics(metrics, step)
-            
-            if step % self.config.CHECKPOINT_FREQ == 0:
-                path = f"checkpoints/point_{step}.pt"
-                save_checkpoint(self.model, self.optimizer, step, None, path, max_keep=self.config.MAX_CHECKPOINTS)
-                print(f"Saved checkpoint at step {step}")
+            if (iteration + 1) % self.config.EVAL_FREQ == 0:
+                metrics.update(self._evaluate())
+
+            if (iteration + 1) % self.config.CHECKPOINT_FREQ == 0:
+                self._save_checkpoint(iteration + 1, metrics)
+
+            if (iteration + 1) % self.config.LOG_INTERVAL == 0:
+                log_metrics(metrics, step=iteration + 1)
+                if self.config.OFFLINE_LOGGING:
+                    log_metrics_local(metrics, step=iteration + 1, out_dir="logs")
+
+            self.global_step = iteration + 1
+
 
 if __name__ == "__main__":
     trainer = Trainer()

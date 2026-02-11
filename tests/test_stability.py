@@ -1,55 +1,107 @@
-import torch
-import torch.nn as nn
 import os
-import sys
 
-# Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import torch
 
+from poker_rl_agent.environment.openspiel_wrapper import PokerEnv
+from poker_rl_agent.environment.state_representation import StateEncoder
+from poker_rl_agent.models.alpha_holdem_net import AlphaHoldemNetwork
+from poker_rl_agent.models.model_utils import masked_logits
+from poker_rl_agent.training.league_manager import LeagueManager
 from poker_rl_agent.training.trainer import Trainer
 from poker_rl_agent.utils.config import Config
 
-def test_stability():
-    print("Initializing Trainer for Stability Test...")
-    config = Config()
-    
-    # Assert V2 Configs
-    assert config.LR == 5e-5, f"LR should be 5e-5, got {config.LR}"
-    assert config.HIDDEN_DIM == 128, f"HIDDEN should be 128, got {config.HIDDEN_DIM}"
-    assert config.GRAD_CLIP == 0.5, f"CLIP should be 0.5, got {config.GRAD_CLIP}"
-    
-    trainer = Trainer(config)
-    
-    print("Running 100 training steps...")
-    
-    # Mock training loop logic to access internals or just run a short train
-    # Since train() loops forever/large iterations, we'll manually step if possible
-    # Or just run trainer.train() but we'd need to mock the loop or interrupt it.
-    # Actually trainer.train() runs CFR_ITERATIONS.
-    # Let's override CFR_ITERATIONS to 2 (since each iter has multiple steps)
-    
-    trainer.config.CFR_ITERATIONS = 2
-    trainer.config.SELF_PLAY_GAMES = 2 # Minimal data
-    trainer.config.BATCH_SIZE = 16 # Small batch for quick test
-    trainer.config.LOG_INTERVAL = 1
-    
-    try:
-        trainer.train()
-        print("Training finished without crash.")
-    except Exception as e:
-        print(f"FAILED: Training crashed with {e}")
-        raise e
-        
-    print("Checking Model Weights for NaNs...")
-    for name, param in trainer.model.named_parameters():
-        if torch.isnan(param).any():
-            print(f"FAILED: NaN found in {name}")
-            sys.exit(1)
-        if param.grad is not None and torch.isnan(param.grad).any():
-             print(f"FAILED: NaN gradient in {name}")
-             sys.exit(1)
-             
-    print("SUCCESS: Stability Test Passed")
 
-if __name__ == "__main__":
-    test_stability()
+def _decision_state(env):
+    state = env.reset()
+    while state.is_chance_node():
+        outcomes = state.chance_outcomes()
+        state.apply_action(outcomes[0][0])
+    return state
+
+
+def _test_config():
+    cfg = Config()
+    cfg.CFR_ITERATIONS = 1
+    cfg.ROLLOUT_EPISODES = 4
+    cfg.PPO_EPOCHS = 1
+    cfg.PPO_MINIBATCH_SIZE = 8
+    cfg.HIDDEN_DIM = 64
+    cfg.NUM_LAYERS_CARD = 2
+    cfg.NUM_LAYERS_ACTION = 1
+    cfg.CHECKPOINT_FREQ = 1
+    cfg.LOG_INTERVAL = 1
+    cfg.EVAL_FREQ = 9999
+    cfg.WANDB_MODE = "disabled"
+    cfg.OFFLINE_LOGGING = False
+    cfg.DEVICE = "cpu"
+    return cfg
+
+
+def test_state_encoder_struct_features():
+    env = PokerEnv(env_preset="hunl_fcpa", betting_abstraction="fcpa")
+    state = _decision_state(env)
+
+    encoder = StateEncoder(device="cpu", max_action_history=32)
+    encoded = encoder.encode_state(state, state.current_player(), env.num_actions())
+
+    assert encoded["hole_cards"].shape == (2,)
+    assert encoded["community_cards"].shape == (5,)
+    assert encoded["legal_action_mask"].shape == (env.num_actions(),)
+
+    # Hole cards should be known after chance dealing in HUNL.
+    assert (encoded["hole_cards"] != encoder.UNKNOWN_CARD).sum().item() >= 1
+    # Pot/stack scalars should not be all zeros.
+    assert torch.any(encoded["scalars"].abs() > 0)
+
+
+def test_model_dual_head_output_and_masking():
+    cfg = _test_config()
+    env = PokerEnv(env_preset="hunl_fcpa", betting_abstraction="fcpa")
+    state = _decision_state(env)
+
+    encoder = StateEncoder(device="cpu", max_action_history=32)
+    encoded = encoder.encode_state(state, state.current_player(), env.num_actions())
+    batch = {k: v.unsqueeze(0) for k, v in encoded.items()}
+
+    model = AlphaHoldemNetwork(env.num_actions(), cfg)
+    out = model(batch)
+
+    assert "policy_logits" in out and "state_value" in out
+    assert out["policy_logits"].shape == (1, env.num_actions())
+    assert out["state_value"].shape == (1,)
+
+    masked = masked_logits(out["policy_logits"], batch["legal_action_mask"])
+    illegal = (batch["legal_action_mask"] == 0)
+    if illegal.any():
+        assert torch.all(masked[illegal] < -1e8)
+
+
+def test_league_manager_capacity_and_sampling():
+    cfg = _test_config()
+    env = PokerEnv(env_preset="hunl_fcpa", betting_abstraction="fcpa")
+    model = AlphaHoldemNetwork(env.num_actions(), cfg)
+
+    league = LeagueManager(k_best=3, init_rating=1200.0, k_factor=24.0, pfsp_beta=2.0)
+    for i in range(5):
+        league.add_snapshot(model, step=i, score=float(i))
+
+    assert len(league.entries) == 3
+    sampled = league.sample_opponent()
+    assert sampled is not None
+
+    before = league.current_rating
+    league.update_elo(sampled.entry_id, 1.0)
+    assert league.current_rating != before
+
+
+def test_short_training_smoke_run():
+    cfg = _test_config()
+    trainer = Trainer(cfg)
+    trainer.train()
+
+    assert trainer.global_step == cfg.CFR_ITERATIONS
+    checkpoint_path = "checkpoints/point_1.pt"
+    assert os.path.exists(checkpoint_path)
+
+    for param in trainer.model.parameters():
+        assert not torch.isnan(param).any()

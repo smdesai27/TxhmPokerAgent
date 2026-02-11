@@ -1,12 +1,13 @@
 # AlphaHoldEm Poker RL Agent
 
-This repository contains a PyTorch implementation of a Poker Reinforcement Learning agent inspired by the **AlphaHoldEm** architecture. It uses a **Pseudo-Siamese Neural Network** trained with **Deep CFR+** (Counterfactual Regret Minimization) within the **OpenSpiel** environment.
+This repository contains a PyTorch implementation of a Poker Reinforcement Learning agent inspired by the **AlphaHoldEm** architecture. It uses a **Pseudo-Siamese Neural Network** trained with **PPO + K-best self-play league** within the **OpenSpiel** environment.
 
 Repository: [smdesai27/anitgravity-txhm](https://github.com/smdesai27/anitgravity-txhm)
 
 ## 📌 Features
 - **Pseudo-Siamese Architecture**: Separate towers for Card embeddings and Action history processing.
-- **Deep CFR+ Training**: Replaces tabular CFR with neural network function approximation.
+- **Actor-Critic Training**: PPO objective with clipped policy updates and GAE advantages.
+- **K-Best League Self-Play**: Opponents are sampled from a rolling top-K snapshot pool (PFSP weighting).
 - **Heads-Up No-Limit Hold'em**: Designed for HUNL (Universal Poker), extensible to K players.
 - **Self-Play**: Parallel data collection via self-play trajectories.
 - **Evaluation**: Benchmarking against Random and Rule-based baselines.
@@ -28,7 +29,7 @@ Repository: [smdesai27/anitgravity-txhm](https://github.com/smdesai27/anitgravit
 ## 🚀 Usage
 
 ### Training
-Train the agent using Self-Play and Deep CFR:
+Train the agent using PPO + K-best self-play:
 ```bash
 python poker_rl_agent/scripts/train.py
 ```
@@ -51,11 +52,13 @@ python poker_rl_agent/scripts/play_against_agent.py
 ### Neural Network
 - **Card Tower**: Embeds Hole Cards and Community Cards.
 - **Action Tower**: LSTM-based processing of betting history.
-- **Head**: Predicts cumulative regrets for each legal action.
+- **Heads**:
+  - Policy logits for legal action selection
+  - State-value estimate for PPO critic target
 
 ### Algorithm
-- **External Sampling MCCFR**: Traverses the game tree for the current player, updating the Regret Network based on counterfactual values.
-- **Regret Matching+**: Converts predicted regrets into a strategy for exploring the game tree.
+- **On-Policy PPO**: Uses rollout trajectories, clipped policy loss, value loss, and entropy regularization.
+- **League Self-Play**: Samples opponents from stored top-K snapshots and updates Elo tracking.
 
 ## 📂 Structure
 - `poker_rl_agent/`
@@ -67,7 +70,8 @@ python poker_rl_agent/scripts/play_against_agent.py
 
 ## ⚠️ Notes
 - Training generally requires `open_spiel`'s `universal_poker` game with an ACPC definition for full HUNL. By default, this repo falls back to `leduc_poker` or simplified config if HUNL isn't fully configured in your OpenSpiel install.
-- Deep CFR requires significant compute.
+- Long training runs (3-7 days) are recommended for strong play.
+- The default environment is strict HUNL FCPA (`pyspiel.hunl_game_string("fcpa")`).
 - WandB logging is enabled by default. Set `WANDB_mode=offline` if needed.
 
 ## 🔧 Advanced Configuration & Troubleshooting
@@ -79,14 +83,17 @@ We provide a `scripts/debug_training.py` that supports YAML-based configs:
 # Run with 'debug' preset (small net, short run)
 python scripts/debug_training.py --config_name debug
 
-# Run with 'default' robust preset (LayerNorm, TargetNet, Scheduler)
-python scripts/debug_training.py --config_name default
+# Run with Quadro medium preset
+python scripts/debug_training.py --config_name quadro_medium
+
+# Run with Quadro long preset
+python scripts/debug_training.py --config_name quadro_long
 ```
 
 ### Ablation Studies
 Modify `configs/training_configs.yaml` to create new presets. Available debugging features:
-- **Target Network**: Stabilizes targets (`USE_TARGET_NET: true`).
-- **Gradient Clipping**: Prevents exploding gradients (`GRAD_CLIP: 1.0`).
+- **Gradient Clipping**: Prevents exploding gradients (`GRAD_CLIP`).
+- **AMP Support**: Optional mixed precision on CUDA (`AMP: true`).
 - **Detailed Logging**: Logs weight norms and gradients to WandB.
 - **Checkpointing**: Limits disk usage by keeping only the latest N checkpoints (`MAX_CHECKPOINTS: 5`).
 
@@ -94,4 +101,3 @@ Modify `configs/training_configs.yaml` to create new presets. Available debuggin
 - **Loss Increases**: Try lowering LR (`LR: 1e-4`) or enabling `USE_TARGET_NET`.
 - **NaN Values**: Reduce `LR`, ensure `GRAD_CLIP` is on, or check `Regret Matching` code for zero division.
 - **Disk Full**: Reduce `MAX_CHECKPOINTS` in config.
-

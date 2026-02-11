@@ -29,3 +29,17 @@ class RuleBasedAgent(Agent):
         # Just plays randomly but prefers raising if holding pairs (if we could parse state)
         legal_actions = state.legal_actions()
         return np.random.choice(legal_actions)
+
+
+class PolicyAgent(Agent):
+    """Adapter for OpenSpiel policies exposing action_probabilities()."""
+
+    def __init__(self, policy):
+        self.policy = policy
+
+    def step(self, state):
+        probs = self.policy.action_probabilities(state, state.current_player())
+        actions = list(probs.keys())
+        p = np.array([probs[a] for a in actions], dtype=np.float64)
+        p = p / p.sum()
+        return int(np.random.choice(actions, p=p))

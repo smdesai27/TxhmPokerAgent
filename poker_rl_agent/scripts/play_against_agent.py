@@ -4,18 +4,23 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import torch
 import numpy as np
+from torch.distributions import Categorical
 from poker_rl_agent.models.alpha_holdem_net import AlphaHoldemNetwork
 from poker_rl_agent.environment.openspiel_wrapper import PokerEnv
 from poker_rl_agent.environment.state_representation import StateEncoder
 from poker_rl_agent.utils.config import Config
-from poker_rl_agent.algorithms.regret_matching import regret_matching_plus
+from poker_rl_agent.models.model_utils import masked_logits
 
 def main():
     print("Welcome to AlphaHoldEm Implementation!")
     print("You are playing against the un-trained (or loaded) agent.")
     
-    config = Config
-    env = PokerEnv(config.GAME_NAME)
+    config = Config()
+    env = PokerEnv(
+        game_name=config.GAME_NAME,
+        env_preset=config.ENV_PRESET,
+        betting_abstraction=config.BETTING_ABSTRACTION,
+    )
     num_actions = env.num_actions()
     
     model = AlphaHoldemNetwork(num_actions, config)
@@ -23,7 +28,7 @@ def main():
     # model.load_state_dict...
     model.eval()
     
-    encoder = StateEncoder()
+    encoder = StateEncoder(device="cpu", max_action_history=config.MAX_ACTION_HISTORY)
     
     env.reset()
     state = env.state
@@ -61,18 +66,12 @@ def main():
             print("Agent is thinking...")
             with torch.no_grad():
                 state_tensor = encoder.encode_state(state, 1, num_actions)
-                for k, v in state_tensor.items(): state_tensor[k] = v.unsqueeze(0)
+                for k, v in state_tensor.items():
+                    state_tensor[k] = v.unsqueeze(0)
                 
-                regrets = model(state_tensor)
-                strategy = regret_matching_plus(regrets)[0].numpy()
-                
-                # Mask illegal
-                legal_strategy = strategy[legal_actions]
-                if legal_strategy.sum() > 0:
-                    legal_strategy /= legal_strategy.sum()
-                    action = np.random.choice(legal_actions, p=legal_strategy)
-                else:
-                    action = np.random.choice(legal_actions)
+                outputs = model(state_tensor)
+                logits = masked_logits(outputs["policy_logits"], state_tensor["legal_action_mask"])
+                action = int(Categorical(logits=logits).sample().item())
                     
             print(f"Agent chose action: {action}")
             state.apply_action(action)
