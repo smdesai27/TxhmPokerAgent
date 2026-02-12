@@ -1,0 +1,36 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 354332
+##  Job Name : ah_stage_a_eval
+##  Nodelist : gpu2106
+##      CPUs : 1
+##  Mem/Node : 32768 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Thu Feb 12 08:23:01 AM EST 2026
+###############################################################################
+Job: ah_stage_a_eval (354332)
+Node: gpu2106
+Date: Thu Feb 12 08:23:01 AM EST 2026
+Submit dir: /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+-------------------
+Running Stage A evaluation:
+  checkpoint=checkpoints/latest.pt
+  config=quadro_stage_a
+  episodes_per_seed=2000
+  baseline_iters=3000
+  baseline_seeds=3
+  seed=42
+  output=logs/eval_stage_a_354332.json
+Optional module pokerkit_wrapper was not importable: No module named 'pokerkit'
+Evaluator device: cuda
+Evaluating against Random Agent for 2000 episodes...
+Average Return vs Random: 640.375
+BB/100 vs Random: 640.375
+Evaluating against Always Call Agent for 2000 episodes...
+Average Return vs AlwaysCall: -109.025
+BB/100 vs AlwaysCall: -109.025
+Evaluating against MCCFR-ES solver baseline (mccfr_external_sampling, 3000 iterations) for 3 seed(s)...
+Seed 42: BB/100=204.475 (stderr 303.872), build_s=11.406, cache_hit=False
+Seed 43: BB/100=964.900 (stderr 313.754), build_s=11.425, cache_hit=False
+Seed 44: BB/100=750.050 (stderr 307.528), build_s=11.420, cache_hit=False
+Aggregate vs MCCFR-ES: BB/100 mean=639.808, stderr=226.330, 95% CI +/- 443.608
+Wrote evaluation summary: logs/eval_stage_a_354332.json
