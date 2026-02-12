@@ -3,7 +3,9 @@ import os
 import torch
 import argparse
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if PROJECT_ROOT not in sys.path:
+    sys.path.append(PROJECT_ROOT)
 
 from poker_rl_agent.models.alpha_holdem_net import AlphaHoldemNetwork
 from poker_rl_agent.evaluation.evaluator import Evaluator
@@ -28,11 +30,13 @@ def main():
     )
     num_actions = env.num_actions()
     
-    model = AlphaHoldemNetwork(num_actions, config)
-    load_checkpoint(args.checkpoint, model)
+    target_device = torch.device(config.DEVICE)
+    model = AlphaHoldemNetwork(num_actions, config).to(target_device)
+    load_checkpoint(args.checkpoint, model, map_location=target_device)
     model.eval()
-    
-    evaluator = Evaluator(model, config=config, device=config.DEVICE)
+
+    print(f"Evaluator device: {target_device}")
+    evaluator = Evaluator(model, config=config, device=str(target_device))
     
     print(f"Evaluating against Random Agent for {args.episodes} episodes...")
     random_stats = evaluator.evaluate(RandomAgent(), args.episodes)

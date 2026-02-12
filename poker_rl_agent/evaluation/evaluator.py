@@ -17,6 +17,10 @@ class Evaluator:
         self.agent_model = agent_model
         self.config = config
         self.device = device
+        try:
+            self.model_device = next(self.agent_model.parameters()).device
+        except StopIteration:
+            self.model_device = torch.device("cpu")
         self.env = PokerEnv(
             game_name=config.GAME_NAME,
             env_preset=config.ENV_PRESET,
@@ -42,7 +46,7 @@ class Evaluator:
                 self.evaluator.env.num_actions(),
             )
             with torch.no_grad():
-                batch = {k: v.unsqueeze(0).to(self.evaluator.device) for k, v in encoded.items()}
+                batch = {k: v.unsqueeze(0).to(self.evaluator.model_device) for k, v in encoded.items()}
                 outputs = self.evaluator.agent_model(batch)
                 logits = masked_logits(outputs["policy_logits"], batch["legal_action_mask"])
                 probs = torch.softmax(logits, dim=-1)[0].detach().cpu().numpy()
@@ -58,7 +62,7 @@ class Evaluator:
     @torch.no_grad()
     def _sample_model_action(self, state, player_id):
         encoded = self.encoder.encode_state(state, player_id, self.env.num_actions())
-        batch = {k: v.unsqueeze(0).to(self.device) for k, v in encoded.items()}
+        batch = {k: v.unsqueeze(0).to(self.model_device) for k, v in encoded.items()}
 
         outputs = self.agent_model(batch)
         logits = masked_logits(outputs["policy_logits"], batch["legal_action_mask"])

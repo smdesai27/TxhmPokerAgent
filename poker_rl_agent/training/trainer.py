@@ -361,6 +361,12 @@ class Trainer:
     def train(self):
         init_wandb(config=self.config)
         start_step = self._maybe_resume()
+        print(
+            f"Starting training: start_step={start_step}, "
+            f"target_iterations={self.config.CFR_ITERATIONS}, "
+            f"device={self.device}",
+            flush=True,
+        )
 
         for iteration in range(start_step, self.config.CFR_ITERATIONS):
             metrics = {"iteration": iteration + 1, "lr": self.optimizer.param_groups[0]["lr"]}
@@ -387,8 +393,28 @@ class Trainer:
                 log_metrics(metrics, step=iteration + 1)
                 if self.config.OFFLINE_LOGGING:
                     log_metrics_local(metrics, step=iteration + 1, out_dir="logs")
+                print(
+                    f"[iter={iteration + 1}] "
+                    f"rollout_mean_bb={metrics.get('rollout/mean_final_return_bb', float('nan')):.4f} "
+                    f"policy_loss={metrics.get('train/policy_loss', float('nan')):.6f} "
+                    f"value_loss={metrics.get('train/value_loss', float('nan')):.6f}",
+                    flush=True,
+                )
 
             self.global_step = iteration + 1
+
+        # Guarantee a final checkpoint exists even if the last step does not hit CHECKPOINT_FREQ.
+        if self.global_step > 0 and (self.global_step % self.config.CHECKPOINT_FREQ != 0):
+            self._save_checkpoint(self.global_step, {"iteration": self.global_step})
+            print(
+                f"Saved final checkpoint at step {self.global_step}",
+                flush=True,
+            )
+
+        print(
+            f"Training completed successfully at step {self.global_step}",
+            flush=True,
+        )
 
 
 if __name__ == "__main__":
