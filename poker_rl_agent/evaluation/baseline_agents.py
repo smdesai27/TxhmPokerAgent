@@ -12,15 +12,26 @@ class RandomAgent(Agent):
 class AlwaysCallAgent(Agent):
     def step(self, state):
         legal_actions = state.legal_actions()
-        # Assuming Call is usually index 1 or we check action strings
-        # In OpenSpiel, 'Call' index depends on the game structure.
-        # For simplicity, we try to find 'Call' or 'Check' in string representation
-        # Or just pick the middle action (often Call).
-        # Better: Pyspiel constant if available.
-        # Here we just pick index 1 if available, else random.
-        if 1 in legal_actions:
-            return 1
-        return legal_actions[0]
+        player = state.current_player()
+        preferred = []
+        fallback = []
+        for action in legal_actions:
+            try:
+                action_name = state.action_to_string(player, action).lower()
+            except Exception:
+                action_name = ""
+            if "call" in action_name or "check" in action_name:
+                preferred.append(action)
+            elif "fold" in action_name:
+                continue
+            else:
+                fallback.append(action)
+
+        if preferred:
+            return int(preferred[0])
+        if fallback:
+            return int(fallback[0])
+        return int(legal_actions[0])
 
 class RuleBasedAgent(Agent):
     """Simple Tight-Aggressive Agent."""

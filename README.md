@@ -10,7 +10,7 @@ Repository: [smdesai27/anitgravity-txhm](https://github.com/smdesai27/anitgravit
 - **K-Best League Self-Play**: Opponents are sampled from a rolling top-K snapshot pool (PFSP weighting).
 - **Heads-Up No-Limit Hold'em**: Designed for HUNL (Universal Poker), extensible to K players.
 - **Self-Play**: Parallel data collection via self-play trajectories.
-- **Evaluation**: Benchmarking against Random and Rule-based baselines.
+- **Evaluation**: Benchmarking against Random/heuristic baselines and a solver-generated MCCFR-ES baseline.
 
 ## 🛠️ Setup
 
@@ -38,7 +38,7 @@ Checkpoints will be saved to `checkpoints/`.
 ### Evaluation
 Evaluate a trained checkpoint against baselines:
 ```bash
-python poker_rl_agent/scripts/evaluate.py --checkpoint checkpoints/point_100.pt --episodes 1000
+python poker_rl_agent/scripts/evaluate.py --checkpoint checkpoints/point_100.pt --episodes_per_seed 1000 --baseline_seeds 3
 ```
 
 ### Interactive Play

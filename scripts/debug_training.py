@@ -34,6 +34,8 @@ def load_config(config_path, config_name="default"):
             setattr(base_config, k, v)
         else:
             print(f"Warning: Config key {k} not found in Config class")
+    if hasattr(base_config, "sync_legacy_fields"):
+        base_config.sync_legacy_fields()
             
     return base_config
 

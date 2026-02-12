@@ -66,6 +66,13 @@ def log_metrics_local(metrics: dict, step: int, out_dir: str = "logs"):
     record = dict(metrics)
     record["_step"] = int(step)
     record["_timestamp"] = datetime.utcnow().isoformat() + "Z"
-    path = os.path.join(out_dir, "metrics.jsonl")
+    run_id = str(record.get("run_id", "")).strip()
+    if run_id:
+        safe_run_id = "".join(ch if (ch.isalnum() or ch in {"-", "_"}) else "_" for ch in run_id)
+        filename = f"metrics_{safe_run_id}.jsonl"
+        record["_run_id"] = safe_run_id
+    else:
+        filename = "metrics.jsonl"
+    path = os.path.join(out_dir, filename)
     with open(path, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(record) + "\n")

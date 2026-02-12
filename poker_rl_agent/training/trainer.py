@@ -1,5 +1,6 @@
 import os
 import random
+from datetime import datetime
 from typing import Dict
 
 import numpy as np
@@ -24,6 +25,12 @@ from ..utils.logging_utils import init_wandb, log_metrics, log_metrics_local
 class Trainer:
     def __init__(self, config=None):
         self.config = config if config else Config()
+        if hasattr(self.config, "sync_legacy_fields"):
+            self.config.sync_legacy_fields()
+
+        if not getattr(self.config, "RUN_ID", ""):
+            self.config.RUN_ID = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        self.run_id = self.config.RUN_ID
         self.device = self.config.DEVICE
         self._set_seed(self.config.SEED)
 
@@ -104,8 +111,15 @@ class Trainer:
         self.rollout_buffer.clear()
         returns = []
 
+        min_transitions = max(1, int(getattr(self.config, "MIN_ROLLOUT_TRANSITIONS", 1)))
+        target_episodes = max(1, int(self.config.ROLLOUT_EPISODES))
+        max_episodes = max(target_episodes, min_transitions * 4)
+        episodes_collected = 0
+
         self.model.eval()
-        for _ in range(self.config.ROLLOUT_EPISODES):
+        while episodes_collected < target_episodes or (
+            len(self.rollout_buffer) < min_transitions and episodes_collected < max_episodes
+        ):
             opponent_entry = self.league.sample_opponent()
             opponent_model = self.model if opponent_entry is None else self._get_opponent_model(opponent_entry)
 
@@ -137,11 +151,14 @@ class Trainer:
                     result = 0.5
                 self.league.update_elo(opponent_entry.entry_id, result)
 
+            episodes_collected += 1
+
         mean_return = float(np.mean(returns)) if returns else 0.0
         return {
-            "rollout/episodes": len(returns),
+            "rollout/episodes": int(episodes_collected),
             "rollout/mean_final_return_bb": mean_return,
             "rollout/transitions": len(self.rollout_buffer),
+            "rollout/min_target_transitions": min_transitions,
             "league/current_elo": self.league.current_rating,
         }
 
@@ -150,7 +167,7 @@ class Trainer:
 
     def _ppo_update(self):
         if len(self.rollout_buffer) == 0:
-            return {"train/updates": 0}
+            return {"train/updates": 0, "train/nonfinite_grad_skips": 0}
 
         self.model.train()
         advantages, returns = self.rollout_buffer.compute_advantages(
@@ -159,14 +176,22 @@ class Trainer:
         )
 
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        value_scale = max(float(getattr(self.config, "VALUE_TARGET_SCALE", 1.0)), 1e-6)
+        value_loss_type = str(getattr(self.config, "VALUE_LOSS_TYPE", "huber")).lower()
+        huber_delta = max(float(getattr(self.config, "VALUE_HUBER_DELTA", 1.0)) / value_scale, 1e-6)
+        skip_nonfinite_grad = bool(getattr(self.config, "SKIP_NONFINITE_GRAD", True))
 
         total_policy_loss = 0.0
         total_value_loss = 0.0
         total_entropy = 0.0
         total_kl = 0.0
+        total_clipfrac = 0.0
+        total_explained_var = 0.0
         total_grad_norm = 0.0
         minibatch_count = 0
         optimizer_updates = 0
+        nonfinite_grad_skips = 0
+        nonfinite_loss_batches = 0
 
         self.optimizer.zero_grad(set_to_none=True)
         grad_accum = max(1, int(self.config.GRAD_ACCUM_STEPS))
@@ -185,6 +210,7 @@ class Trainer:
                 old_log_probs = batch["old_log_probs"].to(self.device)
                 adv = batch["advantages"].to(self.device)
                 target_returns = batch["returns"].to(self.device)
+                scaled_returns = target_returns / value_scale
 
                 with torch.amp.autocast(device_type="cuda", enabled=self.amp_enabled):
                     outputs = self.model(states)
@@ -202,9 +228,13 @@ class Trainer:
                         1.0 + self.config.PPO_CLIP_EPS,
                     ) * adv
                     policy_loss = -torch.min(surr1, surr2).mean()
+                    clipfrac = ((ratio - 1.0).abs() > self.config.PPO_CLIP_EPS).float().mean()
 
-                    value_pred = outputs["state_value"]
-                    value_loss = F.mse_loss(value_pred, target_returns)
+                    value_pred = outputs["state_value"] / value_scale
+                    if value_loss_type == "mse":
+                        value_loss = F.mse_loss(value_pred, scaled_returns)
+                    else:
+                        value_loss = F.huber_loss(value_pred, scaled_returns, delta=huber_delta)
 
                     loss = (
                         policy_loss
@@ -212,7 +242,20 @@ class Trainer:
                         - self.config.PPO_ENTROPY_COEF * entropy
                     ) / grad_accum
 
+                if not torch.isfinite(loss.detach()).item():
+                    nonfinite_loss_batches += 1
+                    self.optimizer.zero_grad(set_to_none=True)
+                    accum = 0
+                    continue
+
                 approx_kl = (old_log_probs - new_log_probs).mean().item()
+                with torch.no_grad():
+                    var_y = torch.var(scaled_returns, unbiased=False)
+                    if var_y.item() <= 1e-12:
+                        explained_var = 0.0
+                    else:
+                        residual_var = torch.var(scaled_returns - value_pred.detach(), unbiased=False)
+                        explained_var = float((1.0 - (residual_var / (var_y + 1e-8))).item())
 
                 if self.amp_enabled:
                     self.scaler.scale(loss).backward()
@@ -225,6 +268,8 @@ class Trainer:
                 total_value_loss += float(value_loss.item())
                 total_entropy += float(entropy.item())
                 total_kl += float(approx_kl)
+                total_clipfrac += float(clipfrac.item())
+                total_explained_var += explained_var
 
                 if accum % grad_accum == 0:
                     if self.amp_enabled:
@@ -233,6 +278,16 @@ class Trainer:
                         self.model.parameters(),
                         self.config.GRAD_CLIP,
                     )
+                    grad_norm_value = float(grad_norm.item())
+                    grad_is_nonfinite = not np.isfinite(grad_norm_value)
+
+                    if grad_is_nonfinite and skip_nonfinite_grad:
+                        nonfinite_grad_skips += 1
+                        self.optimizer.zero_grad(set_to_none=True)
+                        if self.amp_enabled:
+                            self.scaler.update()
+                        accum = 0
+                        continue
 
                     if self.amp_enabled:
                         self.scaler.step(self.optimizer)
@@ -242,7 +297,7 @@ class Trainer:
                     self.optimizer.zero_grad(set_to_none=True)
 
                     optimizer_updates += 1
-                    total_grad_norm += float(grad_norm.item())
+                    total_grad_norm += grad_norm_value
 
                 if approx_kl > self.config.PPO_TARGET_KL:
                     early_stop = True
@@ -258,14 +313,22 @@ class Trainer:
                 self.model.parameters(),
                 self.config.GRAD_CLIP,
             )
-            if self.amp_enabled:
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
+            grad_norm_value = float(grad_norm.item())
+            grad_is_nonfinite = not np.isfinite(grad_norm_value)
+            if grad_is_nonfinite and skip_nonfinite_grad:
+                nonfinite_grad_skips += 1
+                self.optimizer.zero_grad(set_to_none=True)
+                if self.amp_enabled:
+                    self.scaler.update()
             else:
-                self.optimizer.step()
-            self.optimizer.zero_grad(set_to_none=True)
-            optimizer_updates += 1
-            total_grad_norm += float(grad_norm.item())
+                if self.amp_enabled:
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                else:
+                    self.optimizer.step()
+                self.optimizer.zero_grad(set_to_none=True)
+                optimizer_updates += 1
+                total_grad_norm += grad_norm_value
 
         if self.scheduler is not None and minibatch_count > 0:
             # Scheduler tracks performance (higher is better), use negative value loss proxy.
@@ -278,7 +341,11 @@ class Trainer:
             "train/value_loss": total_value_loss / denom,
             "train/entropy": total_entropy / denom,
             "train/approx_kl": total_kl / denom,
+            "train/clipfrac": total_clipfrac / denom,
+            "train/explained_var": total_explained_var / denom,
             "train/grad_norm": total_grad_norm / max(1, optimizer_updates),
+            "train/nonfinite_grad_skips": int(nonfinite_grad_skips),
+            "train/nonfinite_loss_batches": int(nonfinite_loss_batches),
         }
 
     def _evaluate(self):
@@ -298,15 +365,26 @@ class Trainer:
             )
 
         if self.config.EVAL_ENABLE_CFR:
-            cfr_stats = self.evaluator.evaluate_vs_cfr(
-                iterations=self.config.EVAL_CFR_ITERATIONS,
+            baseline_stats = self.evaluator.evaluate_vs_solver_baseline(
+                baseline_algo=self.config.EVAL_BASELINE_ALGO,
+                iterations=self.config.EVAL_BASELINE_ITERS,
                 num_episodes=self.config.EVAL_EPISODES,
+                seed=self.config.SEED,
             )
             metrics.update(
                 {
-                    "eval/cfr_bb100": cfr_stats["bb_per_100"],
-                    "eval/cfr_avg_return": cfr_stats["avg_return"],
-                    "eval/cfr_stderr": cfr_stats["std_err"],
+                    "eval/mccfr_es_bb100": baseline_stats["bb_per_100"],
+                    "eval/mccfr_es_avg_return": baseline_stats["avg_return"],
+                    "eval/mccfr_es_stderr": baseline_stats["std_err"],
+                    "eval/mccfr_es_algo": baseline_stats["baseline/algo"],
+                    "eval/mccfr_es_iters": baseline_stats["baseline/iters"],
+                    "eval/mccfr_es_seed": baseline_stats["baseline/seed"],
+                    "eval/mccfr_es_baseline_build_s": baseline_stats["baseline/build_seconds"],
+                    "eval/mccfr_es_baseline_cache_hit": float(baseline_stats["baseline/cache_hit"]),
+                    # Backwards-compatible aliases.
+                    "eval/cfr_bb100": baseline_stats["bb_per_100"],
+                    "eval/cfr_avg_return": baseline_stats["avg_return"],
+                    "eval/cfr_stderr": baseline_stats["std_err"],
                 }
             )
 
@@ -364,12 +442,17 @@ class Trainer:
         print(
             f"Starting training: start_step={start_step}, "
             f"target_iterations={self.config.CFR_ITERATIONS}, "
-            f"device={self.device}",
+            f"device={self.device}, "
+            f"run_id={self.run_id}",
             flush=True,
         )
 
         for iteration in range(start_step, self.config.CFR_ITERATIONS):
-            metrics = {"iteration": iteration + 1, "lr": self.optimizer.param_groups[0]["lr"]}
+            metrics = {
+                "iteration": iteration + 1,
+                "lr": self.optimizer.param_groups[0]["lr"],
+                "run_id": self.run_id,
+            }
 
             rollout_metrics = self._collect_rollouts()
             metrics.update(rollout_metrics)

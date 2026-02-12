@@ -47,6 +47,11 @@ class Config:
     PPO_VALUE_COEF: float = 0.5
     PPO_ENTROPY_COEF: float = 0.01
     PPO_TARGET_KL: float = 0.03
+    VALUE_LOSS_TYPE: str = "huber"  # huber | mse
+    VALUE_HUBER_DELTA: float = 10.0
+    VALUE_TARGET_SCALE: float = 20.0
+    SKIP_NONFINITE_GRAD: bool = True
+    MIN_ROLLOUT_TRANSITIONS: int = 64
 
     # K-best league self-play
     K_BEST: int = 8
@@ -68,9 +73,14 @@ class Config:
     # Evaluation
     EVAL_FREQ: int = 50
     EVAL_EPISODES: int = 200
-    EVAL_CFR_ITERATIONS: int = 300
+    EVAL_BASELINE_ALGO: str = "mccfr_external_sampling"
+    EVAL_BASELINE_ITERS: int = 5000
+    EVAL_BASELINE_SEEDS: int = 3
+    EVAL_BASELINE_CACHE_MODE: str = "process"  # process | none
+    EVAL_BASELINE_LABEL: str = "MCCFR-ES"
+    EVAL_CFR_ITERATIONS: int = 5000  # compatibility alias; synced to EVAL_BASELINE_ITERS
     EVAL_ENABLE_RANDOM: bool = True
-    EVAL_ENABLE_CFR: bool = False
+    EVAL_ENABLE_CFR: bool = False  # compatibility flag for solver baseline eval
     EVAL_ENABLE_NASH_CONV: bool = False
     BB_SIZE: float = 100.0
 
@@ -85,6 +95,7 @@ class Config:
     LOG_INTERVAL: int = 5
     RUN_DIR: str = "."
     RESUME_FROM: str = ""
+    RUN_ID: str = ""
 
     WANDB_PROJECT: str = "alpha-holdem-poker"
     WANDB_RUN_NAME: str = ""
@@ -94,6 +105,23 @@ class Config:
     # Misc
     SEED: int = 42
     DEVICE: str = field(default_factory=_default_device)
+
+    def __post_init__(self):
+        self.sync_legacy_fields()
+
+    def sync_legacy_fields(self):
+        """Keeps legacy field aliases consistent with the canonical config fields."""
+        baseline_iters = int(getattr(self, "EVAL_BASELINE_ITERS", 5000))
+        legacy_cfr_iters = int(getattr(self, "EVAL_CFR_ITERATIONS", baseline_iters))
+        if legacy_cfr_iters != 5000 and baseline_iters == 5000:
+            baseline_iters = legacy_cfr_iters
+        self.EVAL_BASELINE_ITERS = int(baseline_iters)
+        self.EVAL_CFR_ITERATIONS = int(baseline_iters)
+
+        cache_mode = str(getattr(self, "EVAL_BASELINE_CACHE_MODE", "process")).lower()
+        if cache_mode not in {"process", "none"}:
+            cache_mode = "process"
+        self.EVAL_BASELINE_CACHE_MODE = cache_mode
 
     @classmethod
     def to_dict(cls) -> Dict[str, Any]:
