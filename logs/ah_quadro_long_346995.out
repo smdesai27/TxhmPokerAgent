@@ -1,0 +1,9 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 346995
+##  Job Name : ah_quadro_long
+##  Nodelist : gpu1414
+##      CPUs : 1
+##  Mem/Node : 32768 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Wed Feb 11 03:48:41 PM EST 2026
+###############################################################################
