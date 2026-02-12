@@ -1,0 +1,46 @@
+Traceback (most recent call last):
+  File "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/poker_rl_agent/scripts/evaluate.py", line 56, in <module>
+    main()
+  File "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/poker_rl_agent/scripts/evaluate.py", line 38, in main
+    random_stats = evaluator.evaluate(RandomAgent(), args.episodes)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/smdesai/antigravity_poker/anitgravity-txhm/poker_rl_agent/evaluation/evaluator.py", line 85, in evaluate
+    action = self._sample_model_action(state, current_player)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/venv/lib/python3.11/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/users/smdesai/antigravity_poker/anitgravity-txhm/poker_rl_agent/evaluation/evaluator.py", line 63, in _sample_model_action
+    outputs = self.agent_model(batch)
+              ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1776, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1787, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/smdesai/antigravity_poker/anitgravity-txhm/poker_rl_agent/models/alpha_holdem_net.py", line 99, in forward
+    card_features = self.card_tower(hole_cards, community_cards)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1776, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1787, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/smdesai/antigravity_poker/anitgravity-txhm/poker_rl_agent/models/card_tower.py", line 28, in forward
+    hc_emb = self.card_embedding(hole_cards)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1776, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1787, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/venv/lib/python3.11/site-packages/torch/nn/modules/sparse.py", line 191, in forward
+    return F.embedding(
+           ^^^^^^^^^^^^
+  File "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/venv/lib/python3.11/site-packages/torch/nn/functional.py", line 2567, in embedding
+    return torch.embedding(weight, input, padding_idx, scale_grad_by_freq, sparse)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Expected all tensors to be on the same device, but got index is on cuda:0, different from other tensors on cpu (when checking argument in method wrapper_CUDA__index_select)
