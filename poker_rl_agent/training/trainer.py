@@ -283,24 +283,40 @@ class Trainer:
 
     def _evaluate(self):
         self.model.eval()
-        random_stats = self.evaluator.evaluate(RandomAgent(), num_episodes=max(20, self.config.EVAL_EPISODES // 2))
-        cfr_stats = self.evaluator.evaluate_vs_cfr(
-            iterations=self.config.EVAL_CFR_ITERATIONS,
-            num_episodes=self.config.EVAL_EPISODES,
-        )
-        try:
-            nash_conv = self.evaluator.evaluate_nash_conv()
-        except Exception:
-            nash_conv = float("nan")
+        metrics = {}
 
-        return {
-            "eval/random_bb100": random_stats["bb_per_100"],
-            "eval/random_avg_return": random_stats["avg_return"],
-            "eval/cfr_bb100": cfr_stats["bb_per_100"],
-            "eval/cfr_avg_return": cfr_stats["avg_return"],
-            "eval/cfr_stderr": cfr_stats["std_err"],
-            "eval/nash_conv": nash_conv,
-        }
+        if self.config.EVAL_ENABLE_RANDOM:
+            random_stats = self.evaluator.evaluate(
+                RandomAgent(),
+                num_episodes=max(20, self.config.EVAL_EPISODES // 2),
+            )
+            metrics.update(
+                {
+                    "eval/random_bb100": random_stats["bb_per_100"],
+                    "eval/random_avg_return": random_stats["avg_return"],
+                }
+            )
+
+        if self.config.EVAL_ENABLE_CFR:
+            cfr_stats = self.evaluator.evaluate_vs_cfr(
+                iterations=self.config.EVAL_CFR_ITERATIONS,
+                num_episodes=self.config.EVAL_EPISODES,
+            )
+            metrics.update(
+                {
+                    "eval/cfr_bb100": cfr_stats["bb_per_100"],
+                    "eval/cfr_avg_return": cfr_stats["avg_return"],
+                    "eval/cfr_stderr": cfr_stats["std_err"],
+                }
+            )
+
+        if self.config.EVAL_ENABLE_NASH_CONV:
+            try:
+                metrics["eval/nash_conv"] = self.evaluator.evaluate_nash_conv()
+            except Exception:
+                metrics["eval/nash_conv"] = float("nan")
+
+        return metrics
 
     def _save_checkpoint(self, step: int, extra_metrics: Dict[str, float]):
         if self.config.CHECKPOINT_SINGLE_FILE:
@@ -326,10 +342,6 @@ class Trainer:
 
     def _maybe_resume(self):
         checkpoint_path = self.config.RESUME_FROM
-        if not checkpoint_path and self.config.CHECKPOINT_SINGLE_FILE:
-            candidate = os.path.join("checkpoints", "latest.pt")
-            if os.path.exists(candidate):
-                checkpoint_path = candidate
         if not checkpoint_path:
             return 0
 
@@ -365,7 +377,7 @@ class Trainer:
                 self._opponent_cache.clear()
                 metrics["league/size"] = len(self.league.entries)
 
-            if (iteration + 1) % self.config.EVAL_FREQ == 0:
+            if self.config.EVAL_FREQ > 0 and (iteration + 1) % self.config.EVAL_FREQ == 0:
                 metrics.update(self._evaluate())
 
             if (iteration + 1) % self.config.CHECKPOINT_FREQ == 0:

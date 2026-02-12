@@ -1,2 +1,0 @@
-/var/spool/slurmd/job346995/slurm_script: line 4: 3321608 Killed                  python3 scripts/debug_training.py --config_name quadro_long
-[2026-02-11T21:51:23.692] error: Detected 1 oom_kill event in StepId=346995.batch. Some of the step tasks have been OOM Killed.

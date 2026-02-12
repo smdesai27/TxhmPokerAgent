@@ -69,6 +69,9 @@ class Config:
     EVAL_FREQ: int = 50
     EVAL_EPISODES: int = 200
     EVAL_CFR_ITERATIONS: int = 300
+    EVAL_ENABLE_RANDOM: bool = True
+    EVAL_ENABLE_CFR: bool = False
+    EVAL_ENABLE_NASH_CONV: bool = False
     BB_SIZE: float = 100.0
 
     # Checkpointing / logging
