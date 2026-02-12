@@ -1,0 +1,20 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 354268
+##  Job Name : ah_eval
+##  Nodelist : gpu2107
+##      CPUs : 1
+##  Mem/Node : 49152 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Thu Feb 12 07:22:44 AM EST 2026
+###############################################################################
+Optional module pokerkit_wrapper was not importable: No module named 'pokerkit'
+Evaluator device: cuda
+Evaluating against Random Agent for 2000 episodes...
+Average Return vs Random: 435.675
+BB/100 vs Random: 435.675
+Evaluating against Always Call Agent for 2000 episodes...
+Average Return vs AlwaysCall: -188.125
+BB/100 vs AlwaysCall: -188.125
+Evaluating against CFR baseline for 2000 episodes...
+Average Return vs CFR: 154.950
+BB/100 vs CFR: 154.950 (stderr 161.528)
