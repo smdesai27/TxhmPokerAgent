@@ -74,6 +74,9 @@ def main():
     args = parser.parse_args()
 
     config = _load_config(args.config_file, args.config_name)
+    strict_abstraction_env = os.environ.get("STRICT_ABSTRACTION")
+    if strict_abstraction_env is not None:
+        config.STRICT_ABSTRACTION = str(strict_abstraction_env).strip().lower() in {"1", "true", "yes", "on"}
     if args.baseline_algo is not None:
         config.EVAL_BASELINE_ALGO = args.baseline_algo
     if args.baseline_iters is not None:
@@ -94,7 +97,17 @@ def main():
         game_name=config.GAME_NAME,
         env_preset=config.ENV_PRESET,
         betting_abstraction=config.BETTING_ABSTRACTION,
+        strict_abstraction=bool(getattr(config, "STRICT_ABSTRACTION", True)),
     )
+    requested_abstraction = env.get_requested_betting_abstraction()
+    effective_abstraction = env.get_effective_betting_abstraction()
+    strict_abstraction = bool(getattr(config, "STRICT_ABSTRACTION", True))
+    if strict_abstraction and requested_abstraction != effective_abstraction:
+        raise RuntimeError(
+            "Strict abstraction mode detected mismatch: "
+            f"requested={requested_abstraction}, effective={effective_abstraction}."
+        )
+    config.BETTING_ABSTRACTION = effective_abstraction
     num_actions = env.num_actions()
 
     target_device = torch.device(config.DEVICE)
@@ -143,11 +156,15 @@ def main():
         "bb_per_100": _aggregate(baseline_bb),
         "avg_return": _aggregate(baseline_return),
     }
+    ci95_lower_bb100 = baseline_summary["bb_per_100"]["mean"] - baseline_summary["bb_per_100"]["ci95"]
+    ci95_upper_bb100 = baseline_summary["bb_per_100"]["mean"] + baseline_summary["bb_per_100"]["ci95"]
+    pass_primary_gate = bool(ci95_lower_bb100 > 0.0)
     print(
         f"Aggregate vs {config.EVAL_BASELINE_LABEL}: "
         f"BB/100 mean={baseline_summary['bb_per_100']['mean']:.3f}, "
         f"stderr={baseline_summary['bb_per_100']['stderr']:.3f}, "
-        f"95% CI +/- {baseline_summary['bb_per_100']['ci95']:.3f}"
+        f"95% CI +/- {baseline_summary['bb_per_100']['ci95']:.3f}, "
+        f"lower={ci95_lower_bb100:.3f}, pass={pass_primary_gate}"
     )
 
     report = {
@@ -156,6 +173,9 @@ def main():
         "device": str(target_device),
         "config_name": args.config_name,
         "seed_base": base_seed,
+        "meta/requested_betting_abstraction": str(requested_abstraction),
+        "meta/effective_betting_abstraction": str(effective_abstraction),
+        "meta/strict_abstraction": bool(strict_abstraction),
         "episodes_per_seed": episodes_per_seed,
         "random": random_stats,
         "always_call": call_stats,
@@ -167,6 +187,9 @@ def main():
             "per_seed": baseline_per_seed,
             "aggregate": baseline_summary,
         },
+        "acceptance/ci95_lower_bb100": float(ci95_lower_bb100),
+        "acceptance/ci95_upper_bb100": float(ci95_upper_bb100),
+        "acceptance/pass_primary_gate": bool(pass_primary_gate),
     }
 
     output_json = args.output_json

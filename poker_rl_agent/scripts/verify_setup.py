@@ -56,6 +56,7 @@ def main():
         game_name=config.GAME_NAME,
         env_preset=config.ENV_PRESET,
         betting_abstraction=config.BETTING_ABSTRACTION,
+        strict_abstraction=bool(getattr(config, "STRICT_ABSTRACTION", True)),
     )
     model = AlphaHoldemNetwork(env.num_actions(), config)
     payload = load_checkpoint(checkpoint_path, model)

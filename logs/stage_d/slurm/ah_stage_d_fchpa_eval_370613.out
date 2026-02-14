@@ -1,0 +1,43 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 370613
+##  Job Name : ah_stage_d_fchpa_eval
+##  Nodelist : gpu2607
+##      CPUs : 1
+##  Mem/Node : 32768 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Fri Feb 13 02:44:27 PM EST 2026
+###############################################################################
+Job: ah_stage_d_fchpa_eval (370613)
+Node: gpu2607
+Date: Fri Feb 13 02:44:27 PM EST 2026
+Submit dir: /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+-------------------
+Running Stage D FCHPA complete evaluation:
+  checkpoint=checkpoints/latest.pt
+  config=quadro_stage_d_fchpa
+  strict_abstraction=true
+  profile=standard
+  episodes_per_seed=3000
+  base_seed=42
+  holdout_seed_base=20042
+  holdout_seed_count=3
+  output=logs/eval_stage_d_fchpa_370613.json
+Optional module pokerkit_wrapper was not importable: No module named 'pokerkit'
+Evaluator device: cuda
+Running complete eval profile='standard' with 2 solver tier(s), seed base=42
+Random BB/100=165.850 | AlwaysCall BB/100=-528.750
+Control baseline (0-iter MCCFR-ES): bb/100=-179.850, build_s=0.000
+Tier 'default_cfr': baseline=mccfr_external_sampling, iters=5000, seeds=5, episodes/seed=3000
+  seed=42: bb/100=-31.517, stderr=100.727, build_s=79.511
+  seed=43: bb/100=-2.517, stderr=102.327, build_s=79.050
+  seed=44: bb/100=-32.550, stderr=96.246, build_s=78.957
+  seed=45: bb/100=-50.383, stderr=106.535, build_s=79.436
+  seed=46: bb/100=156.017, stderr=98.007, build_s=78.120
+  aggregate: mean=7.810, stderr=37.838, ci95=+/-74.162, lower=-66.352, pass=False
+Tier 'robustness': baseline=mccfr_external_sampling, iters=10000, seeds=3, episodes/seed=3000
+  seed=42: bb/100=186.483, stderr=103.349, build_s=153.846
+  seed=43: bb/100=186.367, stderr=102.719, build_s=153.040
+  seed=44: bb/100=-39.100, stderr=105.078, build_s=156.621
+  aggregate: mean=111.250, stderr=75.175, ci95=+/-147.343, lower=-36.093, pass=False
+Overall gates: default_cfr=False, robustness=True, holdout=True, verified=True, pass_all=False
+Wrote complete evaluation report: logs/eval_stage_d_fchpa_370613.json

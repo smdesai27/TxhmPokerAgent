@@ -1,0 +1,29 @@
+{
+  "timestamp_utc": "2026-02-13T15:32:46.033613Z",
+  "run_name": "stage_c_fcpa_pass_all",
+  "stage": "stage_c_fcpa",
+  "checkpoint_step": 20000,
+  "training_stability": {
+    "records": 2200,
+    "iteration_min": 9005,
+    "iteration_max": 20000,
+    "nonfinite_grad_skips_final": 0.0,
+    "nonfinite_loss_batches_final": 0.0,
+    "rollout_mean_final_return_bb_last": 4.713541666666667
+  },
+  "benchmark_gates": {
+    "pass_all": true,
+    "pass_default_cfr_gate": true,
+    "pass_robustness_gate": true,
+    "pass_holdout_gate": true,
+    "solver_training_verified": true
+  },
+  "key_plots": [
+    "rollout/mean_final_return_bb",
+    "train/policy_loss",
+    "train/value_loss",
+    "train/approx_kl",
+    "train/clipfrac",
+    "train/grad_norm"
+  ]
+}

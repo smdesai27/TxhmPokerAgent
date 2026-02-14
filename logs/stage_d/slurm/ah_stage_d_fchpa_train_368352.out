@@ -1,0 +1,16 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 368352
+##  Job Name : ah_stage_d_fchpa_train
+##  Nodelist : gpu2502
+##      CPUs : 1
+##  Mem/Node : 32768 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Fri Feb 13 12:35:54 PM EST 2026
+###############################################################################
+Job: ah_stage_d_fchpa_train (368352)
+Node: gpu2502
+Date: Fri Feb 13 12:35:54 PM EST 2026
+Submit dir: /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+-------------------
+WANDB_MODE=online requires WANDB_API_KEY in the SLURM environment.
+Set it with: export WANDB_API_KEY=... before sbatch.

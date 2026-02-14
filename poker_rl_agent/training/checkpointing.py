@@ -37,6 +37,7 @@ def save_checkpoint(
     league_state: Optional[Dict[str, Any]] = None,
     config: Optional[Any] = None,
     extra: Optional[Dict[str, Any]] = None,
+    keep_files: Optional[list] = None,
 ):
     """Saves training state and prunes old checkpoints."""
     dirname = os.path.dirname(path)
@@ -63,8 +64,11 @@ def save_checkpoint(
         # Minimal-storage mode: keep only the rolling file.
         try:
             keep_name = os.path.basename(path)
+            keep_set = {keep_name}
+            if keep_files:
+                keep_set.update(os.path.basename(str(name)) for name in keep_files)
             for file_name in os.listdir(dirname or "."):
-                if file_name.endswith(".pt") and file_name != keep_name:
+                if file_name.endswith(".pt") and file_name not in keep_set:
                     full_path = os.path.join(dirname, file_name) if dirname else file_name
                     try:
                         os.remove(full_path)

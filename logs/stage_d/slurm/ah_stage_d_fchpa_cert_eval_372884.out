@@ -1,0 +1,45 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 372884
+##  Job Name : ah_stage_d_fchpa_cert_eval
+##  Nodelist : gpu1414
+##      CPUs : 1
+##  Mem/Node : 32768 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Fri Feb 13 10:07:22 PM EST 2026
+###############################################################################
+Job: ah_stage_d_fchpa_cert_eval (372884)
+Node: gpu1414
+Date: Fri Feb 13 10:07:22 PM EST 2026
+Submit dir: /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+-------------------
+Running Stage D FCHPA CERT evaluation:
+  checkpoint=checkpoints/latest.pt
+  config=quadro_stage_d_fchpa_continue
+  strict_abstraction=true
+  profile=standard
+  episodes_per_seed=10000
+  base_seed=42
+  holdout_seed_base=30042
+  holdout_seed_count=5
+  require_robust_ci=true
+  verify_solver_training=true
+  output=logs/eval_stage_d_fchpa_cert_372884.json
+Optional module pokerkit_wrapper was not importable: No module named 'pokerkit'
+Evaluator device: cuda
+Running complete eval profile='standard' with 2 solver tier(s), seed base=42
+Random BB/100=866.220 | AlwaysCall BB/100=1177.065
+Control baseline (0-iter MCCFR-ES): bb/100=926.950, build_s=0.000
+Tier 'default_cfr': baseline=mccfr_external_sampling, iters=5000, seeds=5, episodes/seed=10000
+  seed=42: bb/100=883.405, stderr=104.408, build_s=76.202
+  seed=43: bb/100=910.010, stderr=105.244, build_s=75.900
+  seed=44: bb/100=990.295, stderr=103.597, build_s=75.905
+  seed=45: bb/100=833.565, stderr=102.497, build_s=76.492
+  seed=46: bb/100=981.310, stderr=102.548, build_s=75.723
+  aggregate: mean=919.717, stderr=29.673, ci95=+/-58.159, lower=861.558, pass=True
+Tier 'robustness': baseline=mccfr_external_sampling, iters=10000, seeds=3, episodes/seed=10000
+  seed=42: bb/100=915.795, stderr=104.627, build_s=147.331
+  seed=43: bb/100=795.910, stderr=104.842, build_s=147.323
+  seed=44: bb/100=922.665, stderr=104.045, build_s=150.030
+  aggregate: mean=878.123, stderr=41.154, ci95=+/-80.663, lower=797.461, pass=True
+Overall gates: default_cfr=True, robustness=True, holdout=True, behavior=True, verified=True, pass_all=True
+Wrote complete evaluation report: logs/eval_stage_d_fchpa_cert_372884.json

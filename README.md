@@ -23,8 +23,19 @@ Repository: [smdesai27/anitgravity-txhm](https://github.com/smdesai27/anitgravit
 2. **Configuration**
    Adjust hyperparameters in `poker_rl_agent/utils/config.py`:
    - `GAME_NAME`: "universal_poker" (default) or "leduc_poker" for testing.
+   - `BETTING_ABSTRACTION`: `fcpa`, `fchpa` (legacy alias `fcpha`), or `fullgame`.
+   - `STRICT_ABSTRACTION`: `true` for fail-fast experiment integrity (recommended).
    - `CFR_ITERATIONS`: Training duration.
    - `DEVICE`: 'cuda' or 'cpu'.
+
+3. **Weights & Biases (Online Graphs)**
+   ```bash
+   export WANDB_API_KEY=...
+   export WANDB_PROJECT=alpha-holdem-poker
+   export WANDB_ENTITY=<your_wandb_entity>
+   # Optional:
+   wandb login
+   ```
 
 ## 🚀 Usage
 
@@ -41,11 +52,61 @@ Evaluate a trained checkpoint against baselines:
 python poker_rl_agent/scripts/evaluate.py --checkpoint checkpoints/point_100.pt --episodes_per_seed 1000 --baseline_seeds 3
 ```
 
-### Interactive Play
-Play against the agent in terminal:
+Run a complete multi-tier benchmark report (default CFR gate + robustness gate):
 ```bash
-python poker_rl_agent/scripts/play_against_agent.py
+python poker_rl_agent/scripts/evaluate_complete.py \
+  --checkpoint checkpoints/latest.pt \
+  --config_file configs/training_configs.yaml \
+  --config_name quadro_stage_b \
+  --episodes_per_seed 5000 \
+  --profile standard \
+  --verify_solver_training \
+  --holdout_seed_base 10042 \
+  --holdout_seed_count 5 \
+  --output_json logs/eval_complete_stage_b.json
 ```
+
+Stage C certification-style eval (strict robustness CI):
+```bash
+python poker_rl_agent/scripts/evaluate_complete.py \
+  --checkpoint checkpoints/latest.pt \
+  --config_file configs/training_configs.yaml \
+  --config_name quadro_stage_c_fcpa \
+  --episodes_per_seed 5000 \
+  --profile exhaustive \
+  --verify_solver_training \
+  --require_robust_ci \
+  --holdout_seed_base 12042 \
+  --holdout_seed_count 5 \
+  --output_json logs/eval_complete_stage_c_cert.json
+```
+
+Import an existing local metrics JSONL into W&B (for already completed runs):
+```bash
+python poker_rl_agent/scripts/wandb_import_jsonl.py \
+  --metrics_jsonl logs/metrics_20260212_185050.jsonl \
+  --project alpha-holdem-poker \
+  --entity <your_wandb_entity> \
+  --run_name stage_c_fcpa_reimport \
+  --step_key _step
+```
+
+### Interactive Play
+Play heads-up against the agent in terminal (classic Texas Hold'em fullgame by default):
+```bash
+python poker_rl_agent/scripts/play_against_agent.py \
+  --checkpoint checkpoints/latest.pt \
+  --config_file configs/training_configs.yaml \
+  --config_name quadro_stage_b \
+  --game_mode fullgame \
+  --human_seat 0 \
+  --hands 20 \
+  --bot_policy sample \
+  --policy_temperature 1.0
+```
+If your checkpoint is FCPA (4 actions) and you play `--game_mode fullgame`, adapter mode is enabled by default and the script prints:
+`Adapter mode active: qualitative play only, not benchmark-comparable.`
+Use `--disable_adapter` to fail fast instead of adapting action spaces.
 
 ## 🧠 Architecture Details
 
@@ -72,7 +133,7 @@ python poker_rl_agent/scripts/play_against_agent.py
 - Training generally requires `open_spiel`'s `universal_poker` game with an ACPC definition for full HUNL. By default, this repo falls back to `leduc_poker` or simplified config if HUNL isn't fully configured in your OpenSpiel install.
 - Long training runs (3-7 days) are recommended for strong play.
 - The default environment is strict HUNL FCPA (`pyspiel.hunl_game_string("fcpa")`).
-- WandB logging is enabled by default. Set `WANDB_mode=offline` if needed.
+- W&B logging supports `online`, `offline`, and `disabled` modes via `WANDB_MODE`.
 
 ## 🔧 Advanced Configuration & Troubleshooting
 If you encounter instability (diverging loss, NaN values), use the robust configuration system.
@@ -88,6 +149,126 @@ python scripts/debug_training.py --config_name quadro_medium
 
 # Run with Quadro long preset
 python scripts/debug_training.py --config_name quadro_long
+
+# Run Stage C FCPA preset (10k iters)
+python scripts/debug_training.py --config_name quadro_stage_c_fcpa
+
+# Run Stage D FCHPA bridge preset (5-action abstraction)
+python scripts/debug_training.py --config_name quadro_stage_d_fchpa
+
+# Continue Stage D FCHPA from latest checkpoint with anti-collapse controls
+python scripts/debug_training.py --config_name quadro_stage_d_fchpa_continue
+
+# Continue Stage D FCHPA tuned run to 12k
+python scripts/debug_training.py --config_name quadro_stage_d_fchpa_continue_12k_tuned
+
+# Stage D ablation presets (1500-step continuation from latest checkpoint)
+python scripts/debug_training.py --config_name quadro_stage_d_fchpa_recover_explore_ablate
+python scripts/debug_training.py --config_name quadro_stage_d_fchpa_recover_diverse_ablate
+python scripts/debug_training.py --config_name quadro_stage_d_fchpa_recover_value_stable_ablate
+
+# Stage D selected continuation to 16k (choose winning ablation family)
+python scripts/debug_training.py --config_name quadro_stage_d_fchpa_recover_explore_16k
+
+# Run Stage E fullgame progressive preset (generalization track)
+python scripts/debug_training.py --config_name quadro_stage_e_fullgame_progressive
+```
+
+### SLURM-Compatible Eval Command Pattern
+You can run the complete benchmark via `sbatch --wrap` on HPC:
+```bash
+sbatch --job-name=ah_eval_complete \
+  --output=logs/%x_%j.out \
+  --error=logs/%x_%j.err \
+  --time=12:00:00 \
+  --cpus-per-task=8 \
+  --mem=32G \
+  --gres=gpu:1 \
+  --wrap="cd /oscar/home/smdesai/antigravity_poker/anitgravity-txhm && source venv/bin/activate && python poker_rl_agent/scripts/evaluate_complete.py --checkpoint checkpoints/latest.pt --config_file configs/training_configs.yaml --config_name quadro_stage_b --episodes_per_seed 5000 --profile standard --output_json logs/eval_complete_stage_b.json"
+```
+
+Or use the provided Stage C batch scripts directly:
+```bash
+sbatch scripts/slurm_stage_c_train.slurm
+sbatch scripts/slurm_stage_c_eval.slurm
+```
+
+Stage D FCHPA bridge scripts:
+```bash
+sbatch scripts/slurm_stage_d_fchpa_train.slurm
+sbatch scripts/slurm_stage_d_fchpa_eval.slurm
+```
+
+Stage D continuation and ablation scripts:
+```bash
+# Certify current Stage D checkpoint
+sbatch scripts/slurm_stage_d_fchpa_cert_eval.slurm
+
+# Ablation loop (run with each *_ablate config and unique HOLDOUT_SEED_BASE values)
+sbatch --export=ALL,CONFIG_NAME=quadro_stage_d_fchpa_recover_explore_ablate,WANDB_MODE=online scripts/slurm_stage_d_fchpa_ablation_train.slurm
+sbatch --export=ALL,CONFIG_NAME=quadro_stage_d_fchpa_recover_explore_ablate,HOLDOUT_SEED_BASE=61042,WANDB_MODE=online scripts/slurm_stage_d_fchpa_ablation_eval.slurm
+
+# Promote selected winner to 16k and certify
+sbatch --export=ALL,CONFIG_NAME=quadro_stage_d_fchpa_recover_explore_16k,WANDB_MODE=online scripts/slurm_stage_d_fchpa_selected_16k_train.slurm
+sbatch --export=ALL,CONFIG_NAME=quadro_stage_d_fchpa_recover_explore_16k,WANDB_MODE=online scripts/slurm_stage_d_fchpa_selected_16k_cert_eval.slurm
+
+# Optional corrective +1k if cert passes but fold > 0.45
+sbatch --export=ALL,CONFIG_NAME=quadro_stage_d_fchpa_recover_explore_corrective_17k,WANDB_MODE=online scripts/slurm_stage_d_fchpa_selected_16k_train.slurm
+sbatch --export=ALL,CONFIG_NAME=quadro_stage_d_fchpa_recover_explore_corrective_17k,WANDB_MODE=online scripts/slurm_stage_d_fchpa_selected_16k_cert_eval.slurm
+```
+
+Stage D artifact locations:
+- `logs/stage_d/slurm/`
+- `logs/stage_d/eval/`
+- `logs/stage_d/metrics/`
+- `checkpoints/snapshots/stage_d/`
+
+Cleanup and checkpoint indexing:
+```bash
+scripts/organize_workspace.sh --apply
+python poker_rl_agent/scripts/checkpoint_manager.py organize --root checkpoints --apply
+python poker_rl_agent/scripts/checkpoint_manager.py index --root checkpoints --apply
+```
+
+Create a named snapshot from current latest:
+```bash
+python poker_rl_agent/scripts/checkpoint_manager.py snapshot \
+  --root checkpoints \
+  --source checkpoints/latest.pt \
+  --stage stage_d \
+  --label candidate_16k \
+  --active-alias candidate_16k_latest.pt \
+  --apply
+```
+
+Stage E fullgame progressive scripts:
+```bash
+sbatch scripts/slurm_stage_e_fullgame_train.slurm
+sbatch scripts/slurm_stage_e_fullgame_eval.slurm
+```
+
+If running online W&B logging on SLURM:
+```bash
+export WANDB_API_KEY=...
+export WANDB_PROJECT=alpha-holdem-poker
+export WANDB_ENTITY=<your_wandb_entity>
+sbatch --export=ALL,WANDB_MODE=online,WANDB_RUN_GROUP=stage_c_fcpa scripts/slurm_stage_c_train.slurm
+```
+
+### Snapshot Archiving
+Create an immutable run snapshot (model + eval + metrics + logs + manifest):
+```bash
+python poker_rl_agent/scripts/archive_run.py \
+  --run_name stage_c_fcpa_pass_all \
+  --stage stage_c_fcpa \
+  --checkpoint checkpoints/latest.pt \
+  --metrics logs/metrics_20260212_185050.jsonl \
+  --eval_json logs/eval_stage_c_366833.json \
+  --slurm_out logs/ah_stage_c_train_357399.out logs/ah_stage_c_eval_366833.out \
+  --slurm_err logs/ah_stage_c_train_357399.err logs/ah_stage_c_eval_366833.err \
+  --config_file configs/training_configs.yaml \
+  --config_name quadro_stage_c_fcpa \
+  --archive_root artifacts/runs
 ```
 
 ### Ablation Studies

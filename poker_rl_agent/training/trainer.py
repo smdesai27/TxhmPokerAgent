@@ -15,6 +15,7 @@ from ..evaluation.baseline_agents import RandomAgent
 from ..evaluation.evaluator import Evaluator
 from ..models.alpha_holdem_net import AlphaHoldemNetwork
 from ..models.model_utils import masked_logits
+from ..training.action_curriculum import FullgameActionCurriculum
 from ..training.checkpointing import load_checkpoint, save_checkpoint
 from ..training.league_manager import LeagueManager
 from ..training.rollout_buffer import RolloutBuffer
@@ -33,12 +34,17 @@ class Trainer:
         self.run_id = self.config.RUN_ID
         self.device = self.config.DEVICE
         self._set_seed(self.config.SEED)
+        strict_abstraction = bool(getattr(self.config, "STRICT_ABSTRACTION", True))
 
         self.env = PokerEnv(
             game_name=self.config.GAME_NAME,
             env_preset=self.config.ENV_PRESET,
             betting_abstraction=self.config.BETTING_ABSTRACTION,
+            strict_abstraction=strict_abstraction,
         )
+        self.requested_betting_abstraction = self.env.get_requested_betting_abstraction()
+        self.effective_betting_abstraction = self.env.get_effective_betting_abstraction()
+        self.config.BETTING_ABSTRACTION = self.env.get_effective_betting_abstraction()
         self.num_actions = self.env.num_actions()
 
         self.model = AlphaHoldemNetwork(self.num_actions, self.config).to(self.device)
@@ -47,6 +53,9 @@ class Trainer:
             lr=self.config.LR,
             weight_decay=self.config.WEIGHT_DECAY,
         )
+        self._base_lr = float(self.config.LR)
+        self._lr_multiplier = 1.0
+        self._kl_low_streak = 0
 
         self.scheduler = None
         if self.config.LR_SCHEDULER == "plateau":
@@ -64,12 +73,19 @@ class Trainer:
             game_name=self.config.GAME_NAME,
             env_preset=self.config.ENV_PRESET,
             betting_abstraction=self.config.BETTING_ABSTRACTION,
+            strict_abstraction=strict_abstraction,
         )
         self.worker = SelfPlayWorker(
             worker_env,
             device=self.device,
             max_action_history=self.config.MAX_ACTION_HISTORY,
         )
+        self.curriculum = None
+        if (
+            str(self.config.BETTING_ABSTRACTION).lower() == "fullgame"
+            and bool(getattr(self.config, "FULLGAME_CURRICULUM_ENABLE", True))
+        ):
+            self.curriculum = FullgameActionCurriculum(self.config)
         self.rollout_buffer = RolloutBuffer()
 
         self.league = LeagueManager(
@@ -83,6 +99,8 @@ class Trainer:
 
         self.evaluator = Evaluator(self.model, self.config, device=self.device)
         self.global_step = 0
+        self.best_eval_score = float("-inf")
+        self.best_eval_step = 0
 
     @staticmethod
     def _set_seed(seed: int):
@@ -91,6 +109,91 @@ class Trainer:
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
+
+    @staticmethod
+    def _linear_schedule(start: float, end: float, progress: float, decay_frac: float) -> float:
+        decay = max(float(decay_frac), 1e-8)
+        clamped_progress = min(max(float(progress), 0.0), 1.0)
+        ratio = min(clamped_progress / decay, 1.0)
+        return float(start + (end - start) * ratio)
+
+    def _policy_temperature(self, progress: float) -> float:
+        start = float(getattr(self.config, "SELF_PLAY_TEMPERATURE_START", 1.0))
+        end = float(getattr(self.config, "SELF_PLAY_TEMPERATURE_END", 1.0))
+        decay = float(getattr(self.config, "SELF_PLAY_TEMPERATURE_DECAY_FRAC", 1.0))
+        return max(1e-3, self._linear_schedule(start, end, progress, decay))
+
+    def _entropy_coef(self, progress: float) -> float:
+        start = float(getattr(self.config, "PPO_ENTROPY_COEF_START", self.config.PPO_ENTROPY_COEF))
+        end = float(getattr(self.config, "PPO_ENTROPY_COEF_END", self.config.PPO_ENTROPY_COEF))
+        decay = float(getattr(self.config, "PPO_ENTROPY_DECAY_FRAC", 1.0))
+        return max(0.0, self._linear_schedule(start, end, progress, decay))
+
+    def _bucket_indices(self):
+        abstraction = str(getattr(self.config, "BETTING_ABSTRACTION", "fcpa")).lower()
+        if abstraction in {"fchpa", "fcpha"}:
+            return 0, 4
+        if abstraction == "fcpa":
+            return 0, 3
+        return None, None
+
+    def _apply_lr_multiplier(self):
+        lr = self._base_lr * self._lr_multiplier
+        for group in self.optimizer.param_groups:
+            group["lr"] = lr
+
+    def _maybe_adjust_adaptive_lr(self, avg_kl: float):
+        metrics = {
+            "train/lr_multiplier": float(self._lr_multiplier),
+            "train/adaptive_lr_event": 0.0,
+            "train/kl_low_streak": float(self._kl_low_streak),
+        }
+        if not bool(getattr(self.config, "PPO_ADAPTIVE_KL_ENABLE", False)):
+            return metrics
+
+        target_kl = max(float(self.config.PPO_TARGET_KL), 1e-8)
+        high_mult = max(float(getattr(self.config, "PPO_ADAPTIVE_KL_HIGH", 2.0)), 1.0)
+        low_mult = max(float(getattr(self.config, "PPO_ADAPTIVE_KL_LOW", 0.5)), 0.0)
+        decay = min(max(float(getattr(self.config, "PPO_ADAPTIVE_LR_DECAY", 0.5)), 1e-6), 1.0)
+        growth = max(float(getattr(self.config, "PPO_ADAPTIVE_LR_GROWTH", 1.05)), 1.0)
+        high_threshold = target_kl * high_mult
+        low_threshold = target_kl * low_mult
+
+        event = 0.0
+        if avg_kl > high_threshold:
+            self._lr_multiplier = max(0.1, self._lr_multiplier * decay)
+            self._kl_low_streak = 0
+            event = -1.0
+        elif avg_kl < low_threshold:
+            self._kl_low_streak += 1
+            if self._kl_low_streak >= 10:
+                self._lr_multiplier = min(3.0, self._lr_multiplier * growth)
+                self._kl_low_streak = 0
+                event = 1.0
+        else:
+            self._kl_low_streak = 0
+
+        if event != 0.0:
+            self._apply_lr_multiplier()
+
+        metrics["train/lr_multiplier"] = float(self._lr_multiplier)
+        metrics["train/adaptive_lr_event"] = event
+        metrics["train/kl_low_streak"] = float(self._kl_low_streak)
+        return metrics
+
+    def _clip_advantages(self, advantages: torch.Tensor):
+        adv_clip = float(getattr(self.config, "PPO_ADV_CLIP", 0.0))
+        if adv_clip <= 0:
+            return advantages
+        return torch.clamp(advantages, min=-adv_clip, max=adv_clip)
+
+    def _compute_explained_var(self, value_pred: torch.Tensor, scaled_returns: torch.Tensor):
+        var_floor = max(float(getattr(self.config, "EXPLAINED_VAR_VAR_FLOOR", 1e-4)), 0.0)
+        var_y = torch.var(scaled_returns, unbiased=False)
+        residual_var = torch.var(scaled_returns - value_pred.detach(), unbiased=False)
+        raw = float((1.0 - (residual_var / (var_y + 1e-8))).item())
+        valid = bool(var_y.item() >= var_floor)
+        return raw, valid, float(var_y.item())
 
     def _build_model_clone(self):
         model = AlphaHoldemNetwork(self.num_actions, self.config).to(self.device)
@@ -107,7 +210,7 @@ class Trainer:
         self._opponent_cache[entry.entry_id] = (entry.step, model)
         return model
 
-    def _collect_rollouts(self):
+    def _collect_rollouts(self, progress: float = 1.0, policy_temperature: float = 1.0):
         self.rollout_buffer.clear()
         returns = []
 
@@ -115,19 +218,39 @@ class Trainer:
         target_episodes = max(1, int(self.config.ROLLOUT_EPISODES))
         max_episodes = max(target_episodes, min_transitions * 4)
         episodes_collected = 0
+        random_opp_prob = min(max(float(getattr(self.config, "LEAGUE_RANDOM_OPPONENT_PROB", 0.0)), 0.0), 1.0)
+        random_opponent_episodes = 0
+
+        preflop_total = 0
+        preflop_fold = 0
+        preflop_allin = 0
+        preflop_action_counts = {}
+        fold_idx, allin_idx = self._bucket_indices()
 
         self.model.eval()
         while episodes_collected < target_episodes or (
             len(self.rollout_buffer) < min_transitions and episodes_collected < max_episodes
         ):
-            opponent_entry = self.league.sample_opponent()
-            opponent_model = self.model if opponent_entry is None else self._get_opponent_model(opponent_entry)
+            use_random_opponent = random.random() < random_opp_prob
+            opponent_entry = None
+            opponent_model = None
+            opponent_agent = None
+            if use_random_opponent:
+                opponent_agent = RandomAgent()
+                random_opponent_episodes += 1
+            else:
+                opponent_entry = self.league.sample_opponent()
+                opponent_model = self.model if opponent_entry is None else self._get_opponent_model(opponent_entry)
 
             episode_transitions, final_return, _ = self.worker.generate_episode(
                 policy_model=self.model,
                 opponent_model=opponent_model,
+                opponent_agent=opponent_agent,
                 train_player=None,
                 bb_size=self.config.BB_SIZE,
+                curriculum=self.curriculum,
+                progress=progress,
+                policy_temperature=policy_temperature,
             )
 
             for transition in episode_transitions:
@@ -139,6 +262,18 @@ class Trainer:
                     log_prob=transition["log_prob"],
                     value=transition["value"],
                 )
+                scalars = transition["state"].get("scalars")
+                is_preflop = False
+                if torch.is_tensor(scalars) and scalars.numel() >= 9:
+                    is_preflop = bool(float(scalars[5].item()) > 0.5)
+                if is_preflop:
+                    action = int(transition["action"])
+                    preflop_total += 1
+                    preflop_action_counts[action] = int(preflop_action_counts.get(action, 0)) + 1
+                    if fold_idx is not None and action == fold_idx:
+                        preflop_fold += 1
+                    if allin_idx is not None and action == allin_idx:
+                        preflop_allin += 1
 
             returns.append(final_return)
 
@@ -154,20 +289,61 @@ class Trainer:
             episodes_collected += 1
 
         mean_return = float(np.mean(returns)) if returns else 0.0
+        if preflop_total > 0:
+            probs = [count / float(preflop_total) for count in preflop_action_counts.values()]
+            preflop_entropy_bits = float(-sum(p * np.log2(max(p, 1e-12)) for p in probs if p > 0.0))
+            preflop_fold_freq = float(preflop_fold) / float(preflop_total)
+            preflop_allin_freq = float(preflop_allin) / float(preflop_total)
+        else:
+            preflop_entropy_bits = 0.0
+            preflop_fold_freq = 0.0
+            preflop_allin_freq = 0.0
+        random_ratio = float(random_opponent_episodes) / float(max(1, episodes_collected))
+
+        if self.curriculum is not None:
+            curriculum_meta = self.curriculum.phase_metadata(progress)
+        else:
+            curriculum_meta = {
+                "curriculum/enabled": 0.0,
+                "curriculum/phase": 3.0,
+                "curriculum/max_raise_pot_mult": -1.0,
+                "curriculum/progress": float(min(max(progress, 0.0), 1.0)),
+            }
         return {
             "rollout/episodes": int(episodes_collected),
             "rollout/mean_final_return_bb": mean_return,
             "rollout/transitions": len(self.rollout_buffer),
             "rollout/min_target_transitions": min_transitions,
             "league/current_elo": self.league.current_rating,
+            "league/random_opponent_ratio_observed": random_ratio,
+            "train/policy_temperature": float(policy_temperature),
+            "train/preflop_action_entropy_bits": preflop_entropy_bits,
+            "train/preflop_fold_freq": preflop_fold_freq,
+            "train/preflop_allin_freq": preflop_allin_freq,
+            **curriculum_meta,
         }
 
     def _to_device(self, batch_states: Dict[str, torch.Tensor]):
         return {k: v.to(self.device) for k, v in batch_states.items()}
 
-    def _ppo_update(self):
+    def _ppo_update(self, entropy_coef: float = None):
         if len(self.rollout_buffer) == 0:
-            return {"train/updates": 0, "train/nonfinite_grad_skips": 0}
+            return {
+                "train/updates": 0,
+                "train/nonfinite_grad_skips": 0,
+                "train/nonfinite_loss_batches": 0,
+                "train/value_target_var": 0.0,
+                "train/explained_var": 0.0,
+                "train/explained_var_raw": 0.0,
+                "train/explained_var_valid_fraction": 0.0,
+                "train/kl_spike_events": 0.0,
+                "train/lr_multiplier": float(self._lr_multiplier),
+                "train/adaptive_lr_event": 0.0,
+                "train/kl_low_streak": float(self._kl_low_streak),
+                "train/entropy_coef_effective": float(
+                    self.config.PPO_ENTROPY_COEF if entropy_coef is None else entropy_coef
+                ),
+            }
 
         self.model.train()
         advantages, returns = self.rollout_buffer.compute_advantages(
@@ -176,10 +352,18 @@ class Trainer:
         )
 
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        advantages = self._clip_advantages(advantages)
         value_scale = max(float(getattr(self.config, "VALUE_TARGET_SCALE", 1.0)), 1e-6)
         value_loss_type = str(getattr(self.config, "VALUE_LOSS_TYPE", "huber")).lower()
         huber_delta = max(float(getattr(self.config, "VALUE_HUBER_DELTA", 1.0)) / value_scale, 1e-6)
+        entropy_coef_effective = float(
+            self.config.PPO_ENTROPY_COEF if entropy_coef is None else entropy_coef
+        )
         skip_nonfinite_grad = bool(getattr(self.config, "SKIP_NONFINITE_GRAD", True))
+        kl_spike_threshold = max(float(self.config.PPO_TARGET_KL), 1e-8) * max(
+            float(getattr(self.config, "PPO_ADAPTIVE_KL_HIGH", 2.0)),
+            1.0,
+        )
 
         total_policy_loss = 0.0
         total_value_loss = 0.0
@@ -187,8 +371,12 @@ class Trainer:
         total_kl = 0.0
         total_clipfrac = 0.0
         total_explained_var = 0.0
+        total_explained_var_raw = 0.0
+        total_value_target_var = 0.0
         total_grad_norm = 0.0
         minibatch_count = 0
+        explained_var_valid_count = 0
+        kl_spike_events = 0
         optimizer_updates = 0
         nonfinite_grad_skips = 0
         nonfinite_loss_batches = 0
@@ -239,7 +427,7 @@ class Trainer:
                     loss = (
                         policy_loss
                         + self.config.PPO_VALUE_COEF * value_loss
-                        - self.config.PPO_ENTROPY_COEF * entropy
+                        - entropy_coef_effective * entropy
                     ) / grad_accum
 
                 if not torch.isfinite(loss.detach()).item():
@@ -250,12 +438,13 @@ class Trainer:
 
                 approx_kl = (old_log_probs - new_log_probs).mean().item()
                 with torch.no_grad():
-                    var_y = torch.var(scaled_returns, unbiased=False)
-                    if var_y.item() <= 1e-12:
-                        explained_var = 0.0
-                    else:
-                        residual_var = torch.var(scaled_returns - value_pred.detach(), unbiased=False)
-                        explained_var = float((1.0 - (residual_var / (var_y + 1e-8))).item())
+                    explained_var_raw, explained_var_valid, value_target_var = self._compute_explained_var(
+                        value_pred,
+                        scaled_returns,
+                    )
+                    explained_var = explained_var_raw if explained_var_valid else 0.0
+                if approx_kl > kl_spike_threshold:
+                    kl_spike_events += 1
 
                 if self.amp_enabled:
                     self.scaler.scale(loss).backward()
@@ -270,6 +459,10 @@ class Trainer:
                 total_kl += float(approx_kl)
                 total_clipfrac += float(clipfrac.item())
                 total_explained_var += explained_var
+                total_explained_var_raw += explained_var_raw
+                total_value_target_var += value_target_var
+                if explained_var_valid:
+                    explained_var_valid_count += 1
 
                 if accum % grad_accum == 0:
                     if self.amp_enabled:
@@ -335,17 +528,25 @@ class Trainer:
             self.scheduler.step(-(total_value_loss / minibatch_count))
 
         denom = max(1, minibatch_count)
+        avg_kl = total_kl / denom
+        adaptive_metrics = self._maybe_adjust_adaptive_lr(avg_kl)
         return {
             "train/updates": optimizer_updates,
             "train/policy_loss": total_policy_loss / denom,
             "train/value_loss": total_value_loss / denom,
             "train/entropy": total_entropy / denom,
-            "train/approx_kl": total_kl / denom,
+            "train/approx_kl": avg_kl,
             "train/clipfrac": total_clipfrac / denom,
-            "train/explained_var": total_explained_var / denom,
+            "train/explained_var": total_explained_var / max(1, explained_var_valid_count),
+            "train/explained_var_raw": total_explained_var_raw / denom,
+            "train/value_target_var": total_value_target_var / denom,
+            "train/explained_var_valid_fraction": float(explained_var_valid_count) / float(denom),
+            "train/kl_spike_events": float(kl_spike_events),
             "train/grad_norm": total_grad_norm / max(1, optimizer_updates),
             "train/nonfinite_grad_skips": int(nonfinite_grad_skips),
             "train/nonfinite_loss_batches": int(nonfinite_loss_batches),
+            "train/entropy_coef_effective": entropy_coef_effective,
+            **adaptive_metrics,
         }
 
     def _evaluate(self):
@@ -396,11 +597,61 @@ class Trainer:
 
         return metrics
 
+    @staticmethod
+    def _extract_primary_eval_score(metrics: Dict[str, float]):
+        if "eval/mccfr_es_bb100" in metrics:
+            return float(metrics["eval/mccfr_es_bb100"])
+        if "eval/cfr_bb100" in metrics:
+            return float(metrics["eval/cfr_bb100"])
+        return None
+
+    def _best_eval_path(self) -> str:
+        return str(getattr(self.config, "CHECKPOINT_BEST_EVAL_PATH", "checkpoints/best_eval.pt"))
+
+    def _maybe_save_best_eval(self, step: int, metrics: Dict[str, float]):
+        if not bool(getattr(self.config, "CHECKPOINT_SAVE_BEST_EVAL", True)):
+            return None
+
+        score = self._extract_primary_eval_score(metrics)
+        if score is None or not np.isfinite(score):
+            return None
+
+        if score <= self.best_eval_score:
+            return None
+
+        self.best_eval_score = float(score)
+        self.best_eval_step = int(step)
+        best_path = self._best_eval_path()
+        save_checkpoint(
+            model=self.model,
+            optimizer=self.optimizer,
+            scheduler=self.scheduler,
+            step=step,
+            path=best_path,
+            max_keep=1,
+            single_file=False,
+            save_optimizer=False,
+            save_scheduler=False,
+            save_league=False,
+            save_extra=True,
+            league_state={},
+            config=self.config,
+            extra={
+                "best_eval_score": float(score),
+                "best_eval_step": int(step),
+                "best_eval_metric": "eval/mccfr_es_bb100",
+            },
+        )
+        return best_path
+
     def _save_checkpoint(self, step: int, extra_metrics: Dict[str, float]):
         if self.config.CHECKPOINT_SINGLE_FILE:
             path = os.path.join("checkpoints", "latest.pt")
         else:
             path = os.path.join("checkpoints", f"point_{step}.pt")
+        keep_files = []
+        if self.config.CHECKPOINT_SINGLE_FILE and bool(getattr(self.config, "CHECKPOINT_SAVE_BEST_EVAL", True)):
+            keep_files.append(self._best_eval_path())
         save_checkpoint(
             model=self.model,
             optimizer=self.optimizer,
@@ -416,6 +667,7 @@ class Trainer:
             league_state=self.league.state_dict() if self.config.CHECKPOINT_SAVE_LEAGUE else {},
             config=self.config,
             extra=extra_metrics if self.config.CHECKPOINT_SAVE_EXTRA else {},
+            keep_files=keep_files,
         )
 
     def _maybe_resume(self):
@@ -434,11 +686,32 @@ class Trainer:
         if league_state:
             self.league.load_state_dict(league_state)
             self._opponent_cache.clear()
+
+        best_path = self._best_eval_path()
+        if os.path.exists(best_path):
+            try:
+                best_payload = torch.load(best_path, map_location=self.device)
+                best_extra = best_payload.get("extra", {}) if isinstance(best_payload, dict) else {}
+                best_score = best_extra.get("best_eval_score")
+                if best_score is not None and np.isfinite(float(best_score)):
+                    self.best_eval_score = float(best_score)
+                    self.best_eval_step = int(best_extra.get("best_eval_step", 0))
+            except Exception:
+                pass
         return int(payload.get("step", 0))
 
     def train(self):
         init_wandb(config=self.config)
         start_step = self._maybe_resume()
+        static_metadata = {
+            "meta/config_name": str(getattr(self.config, "CONFIG_NAME", "default")),
+            "meta/betting_abstraction": str(getattr(self.config, "BETTING_ABSTRACTION", "fcpa")),
+            "meta/requested_betting_abstraction": str(self.requested_betting_abstraction),
+            "meta/effective_betting_abstraction": str(self.effective_betting_abstraction),
+            "meta/strict_abstraction": float(bool(getattr(self.config, "STRICT_ABSTRACTION", True))),
+            "meta/seed": int(getattr(self.config, "SEED", 0)),
+            "meta/resume_step": int(start_step),
+        }
         print(
             f"Starting training: start_step={start_step}, "
             f"target_iterations={self.config.CFR_ITERATIONS}, "
@@ -448,16 +721,23 @@ class Trainer:
         )
 
         for iteration in range(start_step, self.config.CFR_ITERATIONS):
+            progress = float(iteration + 1) / float(max(1, int(self.config.CFR_ITERATIONS)))
+            policy_temperature = self._policy_temperature(progress)
+            entropy_coef = self._entropy_coef(progress)
             metrics = {
                 "iteration": iteration + 1,
                 "lr": self.optimizer.param_groups[0]["lr"],
                 "run_id": self.run_id,
+                **static_metadata,
             }
 
-            rollout_metrics = self._collect_rollouts()
+            rollout_metrics = self._collect_rollouts(
+                progress=progress,
+                policy_temperature=policy_temperature,
+            )
             metrics.update(rollout_metrics)
 
-            update_metrics = self._ppo_update()
+            update_metrics = self._ppo_update(entropy_coef=entropy_coef)
             metrics.update(update_metrics)
 
             if (iteration + 1) % self.config.SNAPSHOT_INTERVAL == 0:
@@ -468,6 +748,11 @@ class Trainer:
 
             if self.config.EVAL_FREQ > 0 and (iteration + 1) % self.config.EVAL_FREQ == 0:
                 metrics.update(self._evaluate())
+                best_path = self._maybe_save_best_eval(iteration + 1, metrics)
+                if best_path is not None:
+                    metrics["checkpoint/best_eval_path"] = str(best_path)
+                    metrics["checkpoint/best_eval_score"] = float(self.best_eval_score)
+                    metrics["checkpoint/best_eval_step"] = int(self.best_eval_step)
 
             if (iteration + 1) % self.config.CHECKPOINT_FREQ == 0:
                 self._save_checkpoint(iteration + 1, metrics)

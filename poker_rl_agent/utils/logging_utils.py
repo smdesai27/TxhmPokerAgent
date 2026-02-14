@@ -2,8 +2,32 @@ import json
 import logging
 import os
 from datetime import datetime
+from typing import List
 
-import wandb
+try:
+    import wandb as _wandb
+    _WANDB_IMPORT_ERROR = None
+except ModuleNotFoundError as exc:
+    _wandb = None
+    _WANDB_IMPORT_ERROR = exc
+
+
+class _MissingWandb:
+    """Minimal stand-in so tests can monkeypatch attributes safely."""
+
+    run = None
+
+    def init(self, *args, **kwargs):  # pragma: no cover - defensive fallback
+        raise ModuleNotFoundError(
+            "The 'wandb' package is not installed. Install it with "
+            "'pip install wandb' or 'pip install -r requirements.txt'."
+        ) from _WANDB_IMPORT_ERROR
+
+    def log(self, *args, **kwargs):  # pragma: no cover - no-op
+        return None
+
+
+wandb = _wandb if _wandb is not None else _MissingWandb()
 
 from .config import Config
 
@@ -20,8 +44,17 @@ def setup_logger(name="PokerRL"):
         
     return logger
 
+
+def _parse_tags(raw_tags) -> List[str]:
+    if raw_tags is None:
+        return []
+    if isinstance(raw_tags, (list, tuple)):
+        return [str(t).strip() for t in raw_tags if str(t).strip()]
+    return [part.strip() for part in str(raw_tags).split(",") if part.strip()]
+
+
 def init_wandb(project_name="alpha-holdem-poker", run_name=None, config=None):
-    """Initializes W&B, but never hard-fails training when unavailable."""
+    """Initializes W&B with optional strict online preflight."""
     if config is None:
         config = Config()
     elif isinstance(config, type):
@@ -34,23 +67,52 @@ def init_wandb(project_name="alpha-holdem-poker", run_name=None, config=None):
     else:
         config_dict = Config.to_dict()
 
-    mode = str(config_dict.get("WANDB_MODE", "offline")).lower()
+    mode = str(os.environ.get("WANDB_MODE", config_dict.get("WANDB_MODE", "offline"))).lower()
+    if mode not in {"online", "offline", "disabled"}:
+        mode = "offline"
     if mode == "disabled":
         return None
 
-    os.environ.setdefault("WANDB_SILENT", "true")
-    os.environ.setdefault("WANDB_MODE", mode)
+    if _WANDB_IMPORT_ERROR is not None:
+        require_online = bool(config_dict.get("WANDB_REQUIRE_ONLINE", True))
+        if mode == "online" and require_online:
+            raise RuntimeError(
+                "W&B logging requested in online mode, but the 'wandb' package is not installed. "
+                "Install it with 'pip install wandb' (or 'pip install -r requirements.txt')."
+            ) from _WANDB_IMPORT_ERROR
+        # Keep offline-safe behavior if wandb is unavailable and strict online mode is not required.
+        return None
 
+    require_online = bool(config_dict.get("WANDB_REQUIRE_ONLINE", True))
+    if mode == "online" and require_online and not os.environ.get("WANDB_API_KEY"):
+        raise RuntimeError(
+            "WANDB_MODE=online requires WANDB_API_KEY when WANDB_REQUIRE_ONLINE=true. "
+            "Set WANDB_API_KEY in your shell or SLURM environment."
+        )
+
+    os.environ.setdefault("WANDB_SILENT", "true")
+    os.environ["WANDB_MODE"] = mode
+
+    project = str(os.environ.get("WANDB_PROJECT", getattr(config, "WANDB_PROJECT", project_name))).strip()
+    run_title = str(os.environ.get("WANDB_RUN_NAME", getattr(config, "WANDB_RUN_NAME", run_name) or "")).strip() or None
+    entity = str(os.environ.get("WANDB_ENTITY", getattr(config, "WANDB_ENTITY", ""))).strip() or None
+    tags = _parse_tags(os.environ.get("WANDB_TAGS", getattr(config, "WANDB_TAGS", "")))
+    run_group = os.environ.get("WANDB_RUN_GROUP", "").strip() or None
     try:
         return wandb.init(
-            project=getattr(config, "WANDB_PROJECT", project_name),
-            name=getattr(config, "WANDB_RUN_NAME", run_name),
+            project=project,
+            name=run_title,
+            entity=entity,
+            tags=tags or None,
+            group=run_group,
             config=config_dict,
             mode=mode,
             monitor_gym=False,
             reinit=True,
         )
     except Exception:
+        if mode == "online" and require_online:
+            raise
         # Fallback to no-op logging in network/sandbox restricted environments.
         return None
 

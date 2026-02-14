@@ -1,0 +1,42 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 374200
+##  Job Name : ah_stage_d_fchpa_cont12k_screen
+##  Nodelist : gpu2264
+##      CPUs : 1
+##  Mem/Node : 32768 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Sat Feb 14 08:20:00 AM EST 2026
+###############################################################################
+Job: ah_stage_d_fchpa_cont12k_screen (374200)
+Node: gpu2264
+Date: Sat Feb 14 08:20:00 AM EST 2026
+Submit dir: /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+-------------------
+Running Stage D FCHPA continuation SCREEN evaluation:
+  checkpoint=checkpoints/latest.pt
+  config=quadro_stage_d_fchpa_continue_12k_tuned
+  strict_abstraction=true
+  profile=standard
+  episodes_per_seed=5000
+  holdout_seed_base=40042
+  holdout_seed_count=5
+  output=logs/eval_stage_d_fchpa_continue_12k_screen_374200.json
+Optional module pokerkit_wrapper was not importable: No module named 'pokerkit'
+Evaluator device: cuda
+Running complete eval profile='standard' with 2 solver tier(s), seed base=42
+Random BB/100=603.260 | AlwaysCall BB/100=134.770
+Control baseline (0-iter MCCFR-ES): bb/100=686.850, build_s=0.000
+Tier 'default_cfr': baseline=mccfr_external_sampling, iters=5000, seeds=5, episodes/seed=5000
+  seed=42: bb/100=499.330, stderr=111.390, build_s=79.515
+  seed=43: bb/100=462.560, stderr=112.207, build_s=79.229
+  seed=44: bb/100=569.540, stderr=109.766, build_s=79.182
+  seed=45: bb/100=808.620, stderr=108.428, build_s=79.702
+  seed=46: bb/100=564.350, stderr=109.538, build_s=78.975
+  aggregate: mean=580.880, stderr=60.381, ci95=+/-118.347, lower=462.533, pass=True
+Tier 'robustness': baseline=mccfr_external_sampling, iters=10000, seeds=3, episodes/seed=5000
+  seed=42: bb/100=513.270, stderr=112.380, build_s=153.765
+  seed=43: bb/100=700.770, stderr=115.502, build_s=153.592
+  seed=44: bb/100=413.460, stderr=111.383, build_s=156.407
+  aggregate: mean=542.500, stderr=84.217, ci95=+/-165.065, lower=377.435, pass=True
+Overall gates: default_cfr=True, robustness=True, holdout=True, behavior=True, verified=True, pass_all=True
+Wrote complete evaluation report: logs/eval_stage_d_fchpa_continue_12k_screen_374200.json

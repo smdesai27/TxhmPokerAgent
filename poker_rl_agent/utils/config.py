@@ -16,13 +16,19 @@ class Config:
     # Environment / game settings
     GAME_NAME: str = "universal_poker"
     ENV_PRESET: str = "hunl_fcpa"
-    BETTING_ABSTRACTION: str = "fcpa"  # fcpa | fullgame
+    BETTING_ABSTRACTION: str = "fcpa"  # fcpa | fchpa | fullgame (fcpha accepted as alias)
+    STRICT_ABSTRACTION: bool = True
     PLAYERS: int = 2
     STACK_SIZE: int = 20000
     SMALL_BLIND: int = 50
     BIG_BLIND: int = 100
     MAX_ACTION_HISTORY: int = 64
     NUM_ACTORS: int = 1
+    FULLGAME_CURRICULUM_ENABLE: bool = True
+    FULLGAME_CURRICULUM_PHASE1_END: float = 0.30
+    FULLGAME_CURRICULUM_PHASE2_END: float = 0.70
+    FULLGAME_CURRICULUM_MAX_RAISE_POT_MULT_P1: float = 1.0
+    FULLGAME_CURRICULUM_MAX_RAISE_POT_MULT_P2: float = 2.5
 
     # Model
     EMBEDDING_DIM: int = 64
@@ -47,11 +53,25 @@ class Config:
     PPO_VALUE_COEF: float = 0.5
     PPO_ENTROPY_COEF: float = 0.01
     PPO_TARGET_KL: float = 0.03
+    PPO_ADV_CLIP: float = 5.0  # <=0 disables clipping
+    PPO_ADAPTIVE_KL_ENABLE: bool = False
+    PPO_ADAPTIVE_KL_HIGH: float = 2.0  # high threshold = this * PPO_TARGET_KL
+    PPO_ADAPTIVE_KL_LOW: float = 0.5  # low threshold = this * PPO_TARGET_KL
+    PPO_ADAPTIVE_LR_DECAY: float = 0.5
+    PPO_ADAPTIVE_LR_GROWTH: float = 1.05
     VALUE_LOSS_TYPE: str = "huber"  # huber | mse
     VALUE_HUBER_DELTA: float = 10.0
     VALUE_TARGET_SCALE: float = 20.0
+    EXPLAINED_VAR_VAR_FLOOR: float = 1e-4
     SKIP_NONFINITE_GRAD: bool = True
     MIN_ROLLOUT_TRANSITIONS: int = 64
+    SELF_PLAY_TEMPERATURE_START: float = 1.20
+    SELF_PLAY_TEMPERATURE_END: float = 1.00
+    SELF_PLAY_TEMPERATURE_DECAY_FRAC: float = 0.60
+    PPO_ENTROPY_COEF_START: float = 0.010
+    PPO_ENTROPY_COEF_END: float = 0.003
+    PPO_ENTROPY_DECAY_FRAC: float = 0.70
+    LEAGUE_RANDOM_OPPONENT_PROB: float = 0.20
 
     # K-best league self-play
     K_BEST: int = 8
@@ -82,6 +102,12 @@ class Config:
     EVAL_ENABLE_RANDOM: bool = True
     EVAL_ENABLE_CFR: bool = False  # compatibility flag for solver baseline eval
     EVAL_ENABLE_NASH_CONV: bool = False
+    BEHAVIOR_GATE_ENABLE: bool = True
+    BEHAVIOR_GATE_MAX_FOLD_FREQ: float = 0.78
+    BEHAVIOR_GATE_MAX_ALLIN_FREQ: float = 0.06
+    BEHAVIOR_GATE_MIN_PRE_FLOP_ENTROPY_BITS: float = 0.75
+    BEHAVIOR_GATE_MIN_CALL_CHECK_FREQ: float = 0.50
+    BEHAVIOR_GATE_MIN_HALF_POT_FREQ: float = 0.01
     BB_SIZE: float = 100.0
 
     # Checkpointing / logging
@@ -92,13 +118,20 @@ class Config:
     CHECKPOINT_SAVE_SCHEDULER: bool = True
     CHECKPOINT_SAVE_LEAGUE: bool = True
     CHECKPOINT_SAVE_EXTRA: bool = True
+    CHECKPOINT_SAVE_BEST_EVAL: bool = True
+    CHECKPOINT_BEST_EVAL_PATH: str = "checkpoints/best_eval.pt"
     LOG_INTERVAL: int = 5
     RUN_DIR: str = "."
     RESUME_FROM: str = ""
     RUN_ID: str = ""
+    CONFIG_NAME: str = "default"
+    ARCHIVE_ROOT: str = "artifacts/runs"
 
     WANDB_PROJECT: str = "alpha-holdem-poker"
+    WANDB_ENTITY: str = ""
     WANDB_RUN_NAME: str = ""
+    WANDB_TAGS: str = ""
+    WANDB_REQUIRE_ONLINE: bool = True
     WANDB_MODE: str = "offline"  # online | offline | disabled
     OFFLINE_LOGGING: bool = True
 

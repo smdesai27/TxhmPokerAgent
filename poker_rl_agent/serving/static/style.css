@@ -1,0 +1,386 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #1a1a2e;
+  --surface: #16213e;
+  --table: #0f3d0f;
+  --table-border: #1a5c1a;
+  --text: #e0e0e0;
+  --text-muted: #888;
+  --accent: #e94560;
+  --gold: #f5c518;
+  --card-bg: #fff;
+  --card-red: #d32f2f;
+  --card-black: #212121;
+  --btn-fold: #b71c1c;
+  --btn-check: #1565c0;
+  --btn-raise: #e65100;
+  --btn-allin: #880e4f;
+  --btn-default: #37474f;
+}
+
+body {
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  background: var(--surface);
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #333;
+}
+
+header h1 {
+  font-size: 1.2rem;
+  color: var(--gold);
+  margin-right: auto;
+}
+
+header select,
+header button {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+header button:hover {
+  background: #2a2a4a;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle-label input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.main-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.table-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  gap: 1rem;
+}
+
+.poker-table {
+  background: radial-gradient(ellipse at center, #1a6b1a 0%, var(--table) 70%);
+  border: 6px solid var(--table-border);
+  border-radius: 50% / 40%;
+  width: 100%;
+  max-width: 700px;
+  padding: 2rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.player-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.player-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.player-stack {
+  font-size: 0.85rem;
+  color: var(--gold);
+}
+
+.cards {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.card {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 62px;
+  border-radius: 5px;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.card.face-up {
+  background: var(--card-bg);
+}
+
+.card.face-up.red {
+  color: var(--card-red);
+}
+
+.card.face-up.black {
+  color: var(--card-black);
+}
+
+.card.face-down {
+  background: linear-gradient(135deg, #1565c0, #0d47a1);
+  color: #fff;
+  font-size: 1.4rem;
+}
+
+.board-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.pot-label {
+  font-size: 0.85rem;
+  color: var(--gold);
+}
+
+.street-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.actions-bar {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 0.5rem;
+}
+
+.action-btn {
+  padding: 0.6rem 1.2rem;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.action-btn:hover {
+  opacity: 0.85;
+}
+
+.action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.action-btn.fold {
+  background: var(--btn-fold);
+}
+
+.action-btn.check,
+.action-btn.call {
+  background: var(--btn-check);
+}
+
+.action-btn.raise,
+.action-btn.bet {
+  background: var(--btn-raise);
+}
+
+.action-btn.allin {
+  background: var(--btn-allin);
+}
+
+.action-btn.default {
+  background: var(--btn-default);
+}
+
+.result-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.result-overlay.hidden {
+  display: none;
+}
+
+.result-card {
+  background: var(--surface);
+  border: 1px solid #555;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  max-width: 400px;
+}
+
+.result-card h2 {
+  margin-bottom: 1rem;
+  font-size: 1.3rem;
+}
+
+.result-card .chips {
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin: 0.5rem 0;
+}
+
+.result-card .chips.positive {
+  color: #4caf50;
+}
+
+.result-card .chips.negative {
+  color: var(--accent);
+}
+
+.result-card button {
+  margin-top: 1rem;
+  padding: 0.6rem 1.5rem;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.sidebar {
+  width: 280px;
+  background: var(--surface);
+  border-left: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar h3 {
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  border-bottom: 1px solid #333;
+  color: var(--gold);
+}
+
+.stats-section {
+  padding: 0.75rem 1rem;
+  font-size: 0.8rem;
+  border-bottom: 1px solid #333;
+}
+
+.stats-section .stat-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.3rem;
+}
+
+.stats-section .stat-label {
+  color: var(--text-muted);
+}
+
+.history-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+  font-family: "Cascadia Code", "Fira Code", monospace;
+}
+
+.history-log .event {
+  margin-bottom: 0.2rem;
+  line-height: 1.4;
+}
+
+.history-log .event.bot {
+  color: #ef9a9a;
+}
+
+.history-log .event.human {
+  color: #81c784;
+}
+
+.history-log .event.system {
+  color: var(--gold);
+  font-style: italic;
+}
+
+.toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #d32f2f;
+  color: #fff;
+  padding: 0.6rem 1.2rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  z-index: 200;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+
+.toast.visible {
+  opacity: 1;
+}
+
+.placeholder-msg {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+@media (max-width: 800px) {
+  .main-layout {
+    flex-direction: column;
+  }
+  .sidebar {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid #333;
+    max-height: 250px;
+  }
+}

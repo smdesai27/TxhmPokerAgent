@@ -22,10 +22,12 @@ class SelfPlayWorker:
         }
 
     @torch.no_grad()
-    def _sample_action(self, model, state_dict_cpu):
+    def _sample_action(self, model, state_dict_cpu, policy_temperature: float = 1.0):
         batch = self._to_model_device(state_dict_cpu)
         outputs = model(batch)
         logits = masked_logits(outputs["policy_logits"], batch["legal_action_mask"])
+        temp = max(float(policy_temperature), 1e-3)
+        logits = logits / temp
         dist = Categorical(logits=logits)
         action = dist.sample()
         log_prob = dist.log_prob(action)
@@ -33,8 +35,41 @@ class SelfPlayWorker:
 
         return int(action.item()), float(log_prob.item()), float(value.item())
 
-    def generate_episode(self, policy_model, opponent_model=None, train_player=None, bb_size: float = 100.0):
-        if opponent_model is None:
+    @staticmethod
+    def _apply_curriculum_mask(
+        curriculum,
+        state,
+        player_id: int,
+        num_actions: int,
+        encoded_state,
+        progress: float,
+    ):
+        if curriculum is None:
+            return encoded_state
+        legal_mask = encoded_state["legal_action_mask"]
+        masked = curriculum.mask_for_state(
+            state=state,
+            player_id=player_id,
+            num_actions=num_actions,
+            legal_action_mask=legal_mask,
+            progress=progress,
+        )
+        out = dict(encoded_state)
+        out["legal_action_mask"] = masked
+        return out
+
+    def generate_episode(
+        self,
+        policy_model,
+        opponent_model=None,
+        opponent_agent=None,
+        train_player=None,
+        bb_size: float = 100.0,
+        curriculum=None,
+        progress: float = 1.0,
+        policy_temperature: float = 1.0,
+    ):
+        if opponent_model is None and opponent_agent is None:
             opponent_model = policy_model
         if train_player is None:
             train_player = np.random.choice([0, 1])
@@ -51,6 +86,11 @@ class SelfPlayWorker:
                 continue
 
             current_player = state.current_player()
+            if current_player != train_player and opponent_agent is not None:
+                action = int(opponent_agent.step(state))
+                state.apply_action(action)
+                continue
+
             model = policy_model if current_player == train_player else opponent_model
 
             encoded = self.encoder.encode_state(
@@ -58,7 +98,20 @@ class SelfPlayWorker:
                 current_player,
                 num_actions=self.env.num_actions(),
             )
-            action, log_prob, value = self._sample_action(model, encoded)
+            encoded = self._apply_curriculum_mask(
+                curriculum=curriculum,
+                state=state,
+                player_id=current_player,
+                num_actions=self.env.num_actions(),
+                encoded_state=encoded,
+                progress=progress,
+            )
+            sampled_temp = policy_temperature if current_player == train_player else 1.0
+            action, log_prob, value = self._sample_action(
+                model,
+                encoded,
+                policy_temperature=sampled_temp,
+            )
             state.apply_action(action)
 
             if current_player == train_player:

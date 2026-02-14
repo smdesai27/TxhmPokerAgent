@@ -1,7 +1,16 @@
+import json
 import os
+import re
+import subprocess
+import sys
 import tempfile
+import importlib.util
+from pathlib import Path
 
+import numpy as np
+import pytest
 import torch
+import yaml
 
 from poker_rl_agent.environment.openspiel_wrapper import PokerEnv
 from poker_rl_agent.environment.state_representation import StateEncoder
@@ -9,10 +18,15 @@ from poker_rl_agent.evaluation.baseline_agents import AlwaysCallAgent
 from poker_rl_agent.evaluation.evaluator import Evaluator
 from poker_rl_agent.models.alpha_holdem_net import AlphaHoldemNetwork
 from poker_rl_agent.models.model_utils import masked_logits
+from poker_rl_agent.training.action_curriculum import FullgameActionCurriculum
+from poker_rl_agent.training.checkpointing import save_checkpoint
 from poker_rl_agent.training.league_manager import LeagueManager
 from poker_rl_agent.training.trainer import Trainer
+from poker_rl_agent.utils import logging_utils
 from poker_rl_agent.utils.config import Config
 from poker_rl_agent.utils.logging_utils import log_metrics_local
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _decision_state(env):
@@ -44,6 +58,13 @@ def _test_config():
     cfg.EVAL_BASELINE_SEEDS = 1
     cfg.EVAL_BASELINE_CACHE_MODE = "process"
     cfg.RUN_ID = "test_run"
+    cfg.PPO_ADV_CLIP = 5.0
+    cfg.PPO_ADAPTIVE_KL_ENABLE = True
+    cfg.PPO_ADAPTIVE_KL_HIGH = 2.0
+    cfg.PPO_ADAPTIVE_KL_LOW = 0.5
+    cfg.PPO_ADAPTIVE_LR_DECAY = 0.5
+    cfg.PPO_ADAPTIVE_LR_GROWTH = 1.05
+    cfg.EXPLAINED_VAR_VAR_FLOOR = 1e-4
     cfg.sync_legacy_fields()
     return cfg
 
@@ -122,6 +143,183 @@ def test_solver_baseline_cache_key_and_wrapper():
     assert compat["baseline/algo"] == "mccfr_external_sampling"
 
 
+def test_solver_baseline_supports_zero_iterations_with_metadata():
+    cfg = _test_config()
+    env = PokerEnv(env_preset="hunl_fcpa", betting_abstraction="fcpa")
+    model = AlphaHoldemNetwork(env.num_actions(), cfg)
+    evaluator = Evaluator(model, config=cfg, device="cpu")
+
+    zero_stats = evaluator.evaluate_vs_solver_baseline(
+        baseline_algo="mccfr_external_sampling",
+        iterations=0,
+        num_episodes=4,
+        seed=321,
+        collect_diagnostics=True,
+    )
+    one_stats = evaluator.evaluate_vs_solver_baseline(
+        baseline_algo="mccfr_external_sampling",
+        iterations=1,
+        num_episodes=4,
+        seed=322,
+        collect_diagnostics=True,
+    )
+
+    assert zero_stats["baseline/iters"] == 0
+    assert one_stats["baseline/iters"] == 1
+    assert zero_stats["baseline/build_seconds"] >= 0.0
+    assert one_stats["baseline/build_seconds"] >= 0.0
+    assert "diagnostics/action_freq_preflop/fold" in zero_stats
+
+
+def test_solver_diagnostics_are_finite_and_bounded():
+    cfg = _test_config()
+    env = PokerEnv(env_preset="hunl_fcpa", betting_abstraction="fcpa")
+    model = AlphaHoldemNetwork(env.num_actions(), cfg)
+    evaluator = Evaluator(model, config=cfg, device="cpu")
+
+    stats = evaluator.evaluate_vs_solver_baseline(
+        baseline_algo="mccfr_external_sampling",
+        iterations=1,
+        num_episodes=8,
+        seed=987,
+        collect_diagnostics=True,
+    )
+    keys = [
+        "diagnostics/action_freq_preflop/fold",
+        "diagnostics/action_freq_preflop/call_check",
+        "diagnostics/action_freq_preflop/half_pot",
+        "diagnostics/action_freq_preflop/pot_raise",
+        "diagnostics/action_freq_preflop/allin",
+        "diagnostics/preflop_action_entropy_bits",
+        "diagnostics/preflop_dominant_action_freq",
+        "diagnostics/showdown_rate",
+        "diagnostics/avg_pot_size_bb",
+    ]
+    for key in keys:
+        assert np.isfinite(float(stats[key]))
+    freq_sum = (
+        float(stats["diagnostics/action_freq_preflop/fold"])
+        + float(stats["diagnostics/action_freq_preflop/call_check"])
+        + float(stats["diagnostics/action_freq_preflop/half_pot"])
+        + float(stats["diagnostics/action_freq_preflop/pot_raise"])
+        + float(stats["diagnostics/action_freq_preflop/allin"])
+    )
+    assert 0.0 <= freq_sum <= 1.0001
+    assert 0.0 <= float(stats["diagnostics/preflop_dominant_action_freq"]) <= 1.0
+    assert np.isfinite(float(stats["diagnostics/preflop_action_entropy_bits"]))
+    assert 0.0 <= float(stats["diagnostics/showdown_rate"]) <= 1.0
+    assert float(stats["diagnostics/avg_pot_size_bb"]) >= 0.0
+
+
+def test_action_bucket_classification_supports_fchpa_alias():
+    assert Evaluator._classify_action_bucket(0, "fchpa") == "fold"
+    assert Evaluator._classify_action_bucket(1, "fchpa") == "call_check"
+    assert Evaluator._classify_action_bucket(2, "fchpa") == "half_pot"
+    assert Evaluator._classify_action_bucket(3, "fchpa") == "pot_raise"
+    assert Evaluator._classify_action_bucket(4, "fchpa") == "allin"
+    assert Evaluator._classify_action_bucket(0, "fcpha") == "fold"
+
+
+def test_action_bucket_classification_supports_fullgame_strings():
+    assert Evaluator._classify_action_bucket(10, "fullgame", action_text="player=0 move=Fold") == "fold"
+    assert Evaluator._classify_action_bucket(11, "fullgame", action_text="player=0 move=Check") == "call_check"
+    assert Evaluator._classify_action_bucket(12, "fullgame", action_text="player=0 move=Call") == "call_check"
+    assert Evaluator._classify_action_bucket(13, "fullgame", action_text="player=0 move=AllIn") == "allin"
+    assert (
+        Evaluator._classify_action_bucket(
+            14,
+            "fullgame",
+            action_text="player=0 move=RaiseTo 60",
+            pot_size=100.0,
+        )
+        == "half_pot"
+    )
+    assert (
+        Evaluator._classify_action_bucket(
+            15,
+            "fullgame",
+            action_text="player=0 move=RaiseTo 300",
+            pot_size=100.0,
+        )
+        == "pot_raise"
+    )
+
+
+def test_open_spiel_wrapper_normalizes_fcpha_to_fchpa():
+    assert PokerEnv._normalize_betting_abstraction("fcpha") == "fchpa"
+    assert PokerEnv._normalize_betting_abstraction("fchpa") == "fchpa"
+
+
+def test_strict_abstraction_raises_when_requested_unavailable(monkeypatch):
+    monkeypatch.setattr(
+        PokerEnv,
+        "_try_load_hunl_from_string",
+        staticmethod(lambda abstraction: (None, f"{abstraction}:unsupported")),
+    )
+    monkeypatch.setattr(
+        PokerEnv,
+        "_try_load_fchpa_from_params",
+        staticmethod(lambda: (None, "fchpa:param_unsupported")),
+    )
+    with pytest.raises(ValueError, match="STRICT_ABSTRACTION=true"):
+        PokerEnv(
+            game_name="universal_poker",
+            env_preset="hunl_fchpa",
+            betting_abstraction="fchpa",
+            strict_abstraction=True,
+        )
+
+
+def test_fullgame_curriculum_mask_respects_phase_caps():
+    class _Struct:
+        pot_size = 100.0
+
+    class _State:
+        def is_terminal(self):
+            return False
+
+        def is_chance_node(self):
+            return False
+
+        def legal_actions(self):
+            return [0, 1, 2, 3, 4]
+
+        def action_to_string(self, _player, action):
+            mapping = {
+                0: "player=0 move=Fold",
+                1: "player=0 move=Call",
+                2: "player=0 move=RaiseTo 80",
+                3: "player=0 move=RaiseTo 300",
+                4: "player=0 move=AllIn",
+            }
+            return mapping[action]
+
+        def to_struct(self):
+            return _Struct()
+
+    cfg = Config()
+    cfg.FULLGAME_CURRICULUM_ENABLE = True
+    cfg.FULLGAME_CURRICULUM_PHASE1_END = 0.30
+    cfg.FULLGAME_CURRICULUM_PHASE2_END = 0.70
+    cfg.FULLGAME_CURRICULUM_MAX_RAISE_POT_MULT_P1 = 1.0
+    cfg.FULLGAME_CURRICULUM_MAX_RAISE_POT_MULT_P2 = 2.5
+
+    curriculum = FullgameActionCurriculum(cfg)
+    legal = torch.ones(5, dtype=torch.float32)
+    state = _State()
+
+    phase1 = curriculum.mask_for_state(state, player_id=0, num_actions=5, legal_action_mask=legal, progress=0.1)
+    phase2 = curriculum.mask_for_state(state, player_id=0, num_actions=5, legal_action_mask=legal, progress=0.5)
+    phase3 = curriculum.mask_for_state(state, player_id=0, num_actions=5, legal_action_mask=legal, progress=0.9)
+
+    assert int(phase1[2].item()) == 1
+    assert int(phase1[3].item()) == 0
+    assert int(phase2[2].item()) == 1
+    assert int(phase2[3].item()) == 0
+    assert int(phase3[2].item()) == 1
+    assert int(phase3[3].item()) == 1
+
+
 def test_always_call_agent_prefers_non_fold_when_available():
     env = PokerEnv(env_preset="hunl_fcpa", betting_abstraction="fcpa")
     state = _decision_state(env)
@@ -173,8 +371,76 @@ def test_trainer_reports_stability_metrics():
     update_metrics = trainer._ppo_update()
     assert "train/clipfrac" in update_metrics
     assert "train/explained_var" in update_metrics
+    assert "train/explained_var_raw" in update_metrics
+    assert "train/value_target_var" in update_metrics
+    assert "train/explained_var_valid_fraction" in update_metrics
+    assert "train/kl_spike_events" in update_metrics
+    assert "train/lr_multiplier" in update_metrics
     assert "train/nonfinite_grad_skips" in update_metrics
     assert "train/nonfinite_loss_batches" in update_metrics
+
+
+def test_advantage_clipping_bounds_values_and_dtype():
+    cfg = _test_config()
+    trainer = Trainer(cfg)
+    adv = torch.tensor([-9.0, -5.0, -1.0, 0.0, 2.0, 8.0], dtype=torch.float32)
+    clipped = trainer._clip_advantages(adv)
+    assert clipped.dtype == adv.dtype
+    assert float(torch.max(clipped)) <= cfg.PPO_ADV_CLIP
+    assert float(torch.min(clipped)) >= -cfg.PPO_ADV_CLIP
+
+
+def test_temperature_schedule_is_bounded_and_monotonic():
+    cfg = _test_config()
+    cfg.SELF_PLAY_TEMPERATURE_START = 1.2
+    cfg.SELF_PLAY_TEMPERATURE_END = 1.0
+    cfg.SELF_PLAY_TEMPERATURE_DECAY_FRAC = 0.6
+    trainer = Trainer(cfg)
+
+    vals = [trainer._policy_temperature(x) for x in [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]]
+    assert all(1.0 <= v <= 1.2 for v in vals)
+    assert vals[0] >= vals[-1]
+    assert all(vals[i] >= vals[i + 1] - 1e-9 for i in range(len(vals) - 1))
+
+
+def test_entropy_coef_schedule_is_bounded_and_monotonic():
+    cfg = _test_config()
+    cfg.PPO_ENTROPY_COEF_START = 0.010
+    cfg.PPO_ENTROPY_COEF_END = 0.003
+    cfg.PPO_ENTROPY_DECAY_FRAC = 0.7
+    trainer = Trainer(cfg)
+
+    vals = [trainer._entropy_coef(x) for x in [0.0, 0.2, 0.4, 0.7, 1.0]]
+    assert all(0.003 <= v <= 0.010 for v in vals)
+    assert vals[0] >= vals[-1]
+    assert all(vals[i] >= vals[i + 1] - 1e-12 for i in range(len(vals) - 1))
+
+
+def test_adaptive_kl_controller_adjusts_learning_rate():
+    cfg = _test_config()
+    trainer = Trainer(cfg)
+    initial_lr = trainer.optimizer.param_groups[0]["lr"]
+
+    trainer._maybe_adjust_adaptive_lr(avg_kl=cfg.PPO_TARGET_KL * 3.0)
+    lr_after_high = trainer.optimizer.param_groups[0]["lr"]
+    assert lr_after_high < initial_lr
+
+    for _ in range(10):
+        trainer._maybe_adjust_adaptive_lr(avg_kl=cfg.PPO_TARGET_KL * 0.1)
+    lr_after_low_streak = trainer.optimizer.param_groups[0]["lr"]
+    assert lr_after_low_streak > lr_after_high
+
+
+def test_explained_var_uses_variance_floor_for_validity():
+    cfg = _test_config()
+    trainer = Trainer(cfg)
+    value_pred = torch.zeros(8, dtype=torch.float32)
+    # Constant targets -> near-zero variance should mark explained-var invalid.
+    target = torch.ones(8, dtype=torch.float32) * 0.5
+    raw, valid, var_y = trainer._compute_explained_var(value_pred, target)
+    assert isinstance(raw, float)
+    assert valid is False
+    assert var_y < cfg.EXPLAINED_VAR_VAR_FLOOR
 
 
 def test_masked_logits_fp16_safe():
@@ -218,9 +484,731 @@ def test_minimal_single_file_checkpoint_mode():
     assert payload.get("league_state") == {}
 
 
+def test_single_file_checkpoint_keeps_protected_file():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        ckpt_dir = Path(temp_dir)
+        latest = ckpt_dir / "latest.pt"
+        best = ckpt_dir / "best_eval.pt"
+        old = ckpt_dir / "old.pt"
+
+        model = torch.nn.Linear(4, 2)
+        optim_ = torch.optim.Adam(model.parameters(), lr=1e-3)
+        torch.save({"x": 1}, best)
+        torch.save({"x": 2}, old)
+
+        save_checkpoint(
+            model=model,
+            optimizer=optim_,
+            step=10,
+            scheduler=None,
+            path=str(latest),
+            max_keep=1,
+            single_file=True,
+            save_optimizer=False,
+            save_scheduler=False,
+            save_league=False,
+            save_extra=False,
+            keep_files=[str(best)],
+        )
+
+        assert latest.exists()
+        assert best.exists()
+        assert not old.exists()
+
+
+def test_trainer_best_eval_checkpoint_updates_only_on_improvement():
+    os.makedirs("checkpoints", exist_ok=True)
+    best_path = os.path.join("checkpoints", "best_eval_test.pt")
+    if os.path.exists(best_path):
+        os.remove(best_path)
+
+    cfg = _test_config()
+    cfg.CHECKPOINT_SINGLE_FILE = True
+    cfg.CHECKPOINT_SAVE_BEST_EVAL = True
+    cfg.CHECKPOINT_BEST_EVAL_PATH = best_path
+    trainer = Trainer(cfg)
+
+    out = trainer._maybe_save_best_eval(10, {"eval/mccfr_es_bb100": 123.0})
+    assert out == best_path
+    payload = torch.load(best_path, map_location="cpu")
+    assert payload["extra"]["best_eval_score"] == 123.0
+    assert payload["extra"]["best_eval_step"] == 10
+
+    out2 = trainer._maybe_save_best_eval(20, {"eval/mccfr_es_bb100": 100.0})
+    assert out2 is None
+    payload2 = torch.load(best_path, map_location="cpu")
+    assert payload2["extra"]["best_eval_score"] == 123.0
+    assert payload2["extra"]["best_eval_step"] == 10
+
+
 def test_log_metrics_local_uses_run_scoped_filename():
     with tempfile.TemporaryDirectory() as temp_dir:
         log_metrics_local({"run_id": "run-42", "x": 1}, step=1, out_dir=temp_dir)
         files = os.listdir(temp_dir)
         assert "metrics_run-42.jsonl" in files
         assert "metrics.jsonl" not in files
+
+
+def test_wandb_preflight_requires_api_key_when_online(monkeypatch):
+    cfg = Config()
+    cfg.WANDB_MODE = "online"
+    cfg.WANDB_REQUIRE_ONLINE = True
+    monkeypatch.delenv("WANDB_MODE", raising=False)
+    monkeypatch.delenv("WANDB_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError):
+        logging_utils.init_wandb(config=cfg)
+
+
+def test_wandb_preflight_online_with_key_calls_init(monkeypatch):
+    cfg = Config()
+    cfg.WANDB_MODE = "online"
+    cfg.WANDB_REQUIRE_ONLINE = True
+    cfg.WANDB_PROJECT = "test_project"
+    cfg.WANDB_ENTITY = "test_entity"
+    cfg.WANDB_TAGS = "tag1,tag2"
+
+    monkeypatch.delenv("WANDB_MODE", raising=False)
+    monkeypatch.delenv("WANDB_PROJECT", raising=False)
+    monkeypatch.delenv("WANDB_ENTITY", raising=False)
+    monkeypatch.delenv("WANDB_TAGS", raising=False)
+    monkeypatch.setenv("WANDB_API_KEY", "dummy")
+    called = {}
+
+    def _fake_init(**kwargs):
+        called.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(logging_utils.wandb, "init", _fake_init)
+    run = logging_utils.init_wandb(config=cfg)
+    assert run is not None
+    assert called["mode"] == "online"
+    assert called["project"] == "test_project"
+    assert called["entity"] == "test_entity"
+    assert called["tags"] == ["tag1", "tag2"]
+
+
+def test_evaluate_script_writes_acceptance_fields():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        cfg = Config()
+        cfg.HIDDEN_DIM = 64
+        cfg.NUM_LAYERS_CARD = 2
+        cfg.NUM_LAYERS_ACTION = 1
+        cfg.DEVICE = "cpu"
+        env = PokerEnv(env_preset="hunl_fcpa", betting_abstraction="fcpa")
+        model = AlphaHoldemNetwork(env.num_actions(), cfg)
+
+        checkpoint_path = os.path.join(temp_dir, "tmp_eval_ckpt.pt")
+        torch.save({"model_state_dict": model.state_dict(), "step": 0}, checkpoint_path)
+        config_path = os.path.join(temp_dir, "eval_test_config.yaml")
+        with open(config_path, "w", encoding="utf-8") as fh:
+            fh.write(
+                "default:\n"
+                "  DEVICE: \"cpu\"\n"
+                "  HIDDEN_DIM: 64\n"
+                "  NUM_LAYERS_CARD: 2\n"
+                "  NUM_LAYERS_ACTION: 1\n"
+                "debug: {}\n"
+            )
+
+        output_json = os.path.join(temp_dir, "eval_out.json")
+        script = str(PROJECT_ROOT / "poker_rl_agent" / "scripts" / "evaluate.py")
+        cmd = [
+            sys.executable,
+            script,
+            "--checkpoint",
+            checkpoint_path,
+            "--config_file",
+            config_path,
+            "--config_name",
+            "debug",
+            "--episodes_per_seed",
+            "2",
+            "--baseline_iters",
+            "1",
+            "--baseline_seeds",
+            "1",
+            "--output_json",
+            output_json,
+        ]
+        subprocess.run(cmd, check=True, cwd=str(PROJECT_ROOT))
+        payload = json.loads(Path(output_json).read_text())
+        assert "acceptance/ci95_lower_bb100" in payload
+        assert "acceptance/ci95_upper_bb100" in payload
+        assert "acceptance/pass_primary_gate" in payload
+        assert isinstance(payload["acceptance/pass_primary_gate"], bool)
+
+
+def test_stage_b_eval_slurm_script_is_present_and_valid_bash():
+    slurm_path = str(PROJECT_ROOT / "scripts" / "slurm_stage_b_eval.slurm")
+    assert os.path.exists(slurm_path)
+    subprocess.run(["bash", "-n", slurm_path], check=True)
+
+
+def test_stage_c_slurm_scripts_are_present_and_valid_bash():
+    for name in ["slurm_stage_c_train.slurm", "slurm_stage_c_eval.slurm"]:
+        slurm_path = str(PROJECT_ROOT / "scripts" / name)
+        assert os.path.exists(slurm_path)
+        subprocess.run(["bash", "-n", slurm_path], check=True)
+
+
+def test_stage_d_slurm_scripts_are_present_and_valid_bash():
+    for name in [
+        "slurm_stage_d_fchpa_train.slurm",
+        "slurm_stage_d_fchpa_eval.slurm",
+        "slurm_stage_d_fcpha_train.slurm",
+        "slurm_stage_d_fcpha_eval.slurm",
+    ]:
+        slurm_path = str(PROJECT_ROOT / "scripts" / name)
+        assert os.path.exists(slurm_path)
+        subprocess.run(["bash", "-n", slurm_path], check=True)
+
+
+def test_stage_d_ablation_and_selection_slurm_scripts_are_present_and_valid_bash():
+    for name in [
+        "slurm_stage_d_fchpa_ablation_train.slurm",
+        "slurm_stage_d_fchpa_ablation_eval.slurm",
+        "slurm_stage_d_fchpa_selected_16k_train.slurm",
+        "slurm_stage_d_fchpa_selected_16k_cert_eval.slurm",
+    ]:
+        slurm_path = str(PROJECT_ROOT / "scripts" / name)
+        assert os.path.exists(slurm_path)
+        subprocess.run(["bash", "-n", slurm_path], check=True)
+
+
+def test_stage_e_slurm_scripts_are_present_and_valid_bash():
+    for name in ["slurm_stage_e_fullgame_train.slurm", "slurm_stage_e_fullgame_eval.slurm"]:
+        slurm_path = str(PROJECT_ROOT / "scripts" / name)
+        assert os.path.exists(slurm_path)
+        subprocess.run(["bash", "-n", slurm_path], check=True)
+
+
+def test_stage_d_continue_preset_exists_and_resumes():
+    cfg_path = PROJECT_ROOT / "configs" / "training_configs.yaml"
+    data = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    assert "quadro_stage_d_fchpa_continue" in data
+    preset = data["quadro_stage_d_fchpa_continue"]
+    assert preset["BETTING_ABSTRACTION"] == "fchpa"
+    assert preset["STRICT_ABSTRACTION"] is True
+    assert preset["RESUME_FROM"] == "checkpoints/latest.pt"
+
+
+def test_stage_d_ablation_presets_exist():
+    cfg_path = PROJECT_ROOT / "configs" / "training_configs.yaml"
+    data = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+
+    for name in [
+        "quadro_stage_d_fchpa_recover_explore_ablate",
+        "quadro_stage_d_fchpa_recover_diverse_ablate",
+        "quadro_stage_d_fchpa_recover_value_stable_ablate",
+        "quadro_stage_d_fchpa_recover_explore_16k",
+        "quadro_stage_d_fchpa_recover_diverse_16k",
+        "quadro_stage_d_fchpa_recover_value_stable_16k",
+        "quadro_stage_d_fchpa_recover_explore_corrective_17k",
+        "quadro_stage_d_fchpa_recover_diverse_corrective_17k",
+        "quadro_stage_d_fchpa_recover_value_stable_corrective_17k",
+    ]:
+        assert name in data
+        assert data[name]["BETTING_ABSTRACTION"] == "fchpa"
+        assert data[name]["STRICT_ABSTRACTION"] is True
+        assert data[name]["RESUME_FROM"] == "checkpoints/latest.pt"
+
+
+def _write_temp_config(config_path: str):
+    with open(config_path, "w", encoding="utf-8") as fh:
+        fh.write(
+            "default:\n"
+            "  DEVICE: \"cpu\"\n"
+            "  HIDDEN_DIM: 64\n"
+            "  NUM_LAYERS_CARD: 2\n"
+            "  NUM_LAYERS_ACTION: 1\n"
+            "debug: {}\n"
+        )
+
+
+def test_play_against_agent_script_smoke_quit():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        cfg = Config()
+        cfg.HIDDEN_DIM = 64
+        cfg.NUM_LAYERS_CARD = 2
+        cfg.NUM_LAYERS_ACTION = 1
+        cfg.DEVICE = "cpu"
+        env = PokerEnv(env_preset="hunl_fcpa", betting_abstraction="fcpa")
+        model = AlphaHoldemNetwork(env.num_actions(), cfg)
+
+        checkpoint_path = os.path.join(temp_dir, "tmp_play_ckpt.pt")
+        torch.save({"model_state_dict": model.state_dict(), "step": 0}, checkpoint_path)
+        config_path = os.path.join(temp_dir, "play_test_config.yaml")
+        _write_temp_config(config_path)
+
+        script = str(PROJECT_ROOT / "poker_rl_agent" / "scripts" / "play_against_agent.py")
+        cmd = [
+            sys.executable,
+            script,
+            "--checkpoint",
+            checkpoint_path,
+            "--config_file",
+            config_path,
+            "--config_name",
+            "debug",
+            "--game_mode",
+            "fcpa",
+            "--hands",
+            "1",
+            "--human_seat",
+            "0",
+            "--seed",
+            "123",
+        ]
+        proc = subprocess.run(
+            cmd,
+            input="quit\n",
+            text=True,
+            capture_output=True,
+            check=True,
+            cwd=str(PROJECT_ROOT),
+            timeout=120,
+        )
+        assert "AlphaHoldEm Heads-Up CLI" in proc.stdout
+        assert "Final session summary" in proc.stdout
+
+
+def test_play_against_agent_input_validation_reprompts():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "play_against_agent.py"
+    spec = importlib.util.spec_from_file_location("play_against_agent_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    env = PokerEnv(env_preset="hunl_fcpa", betting_abstraction="fcpa")
+    state = _decision_state(env)
+    legal = state.legal_actions()
+    assert len(legal) > 0
+
+    import builtins
+
+    original_input = builtins.input
+    prompts = iter(["abc", str(legal[0])])
+    try:
+        builtins.input = lambda _: next(prompts)
+        action, wants_quit = module._choose_human_action(state, state.current_player())
+    finally:
+        builtins.input = original_input
+
+    assert wants_quit is False
+    assert action in legal
+
+
+def test_play_against_agent_fcpa_adapter_mapping():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "play_against_agent.py"
+    spec = importlib.util.spec_from_file_location("play_against_agent_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    class DummyState:
+        def __init__(self):
+            self._legal = [10, 11, 12, 13, 14]
+            self._names = {
+                10: "fold",
+                11: "check",
+                12: "raise 200",
+                13: "raise 20000 all-in",
+                14: "raise 1000",
+            }
+
+        def legal_actions(self):
+            return list(self._legal)
+
+        def action_to_string(self, _player, action):
+            return self._names[action]
+
+    state = DummyState()
+    assert module._map_fcpa_choice_to_fullgame(state, 0, 0) == 10
+    assert module._map_fcpa_choice_to_fullgame(state, 0, 1) == 11
+    assert module._map_fcpa_choice_to_fullgame(state, 0, 2) in state.legal_actions()
+    assert module._map_fcpa_choice_to_fullgame(state, 0, 3) == 13
+
+
+def test_play_against_agent_disable_adapter_rejects_mismatch():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "play_against_agent.py"
+    spec = importlib.util.spec_from_file_location("play_against_agent_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    with pytest.raises(RuntimeError):
+        module._resolve_action_space_config(
+            game_mode="fullgame",
+            env_num_actions=20001,
+            checkpoint_num_actions=4,
+            disable_adapter=True,
+        )
+
+    resolved_actions, adapter_mode = module._resolve_action_space_config(
+        game_mode="fullgame",
+        env_num_actions=20001,
+        checkpoint_num_actions=4,
+        disable_adapter=False,
+    )
+    assert resolved_actions == 4
+    assert adapter_mode is True
+
+
+def test_policy_temperature_scaling_shape_and_dtype():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "play_against_agent.py"
+    spec = importlib.util.spec_from_file_location("play_against_agent_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    logits = torch.tensor([[1.0, 2.0, 3.0]], dtype=torch.float32)
+    scaled = module._temperature_scale_logits(logits, 2.0)
+    assert scaled.shape == logits.shape
+    assert scaled.dtype == logits.dtype
+    assert torch.allclose(scaled, logits / 2.0)
+
+    floored = module._temperature_scale_logits(logits, 0.0)
+    assert floored.shape == logits.shape
+    assert torch.isfinite(floored).all()
+
+
+def test_evaluate_complete_script_writes_expected_schema():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        cfg = Config()
+        cfg.HIDDEN_DIM = 64
+        cfg.NUM_LAYERS_CARD = 2
+        cfg.NUM_LAYERS_ACTION = 1
+        cfg.DEVICE = "cpu"
+        env = PokerEnv(env_preset="hunl_fcpa", betting_abstraction="fcpa")
+        model = AlphaHoldemNetwork(env.num_actions(), cfg)
+
+        checkpoint_path = os.path.join(temp_dir, "tmp_eval_complete_ckpt.pt")
+        torch.save({"model_state_dict": model.state_dict(), "step": 0}, checkpoint_path)
+        config_path = os.path.join(temp_dir, "eval_complete_test_config.yaml")
+        _write_temp_config(config_path)
+
+        output_json = os.path.join(temp_dir, "eval_complete_out.json")
+        script = str(PROJECT_ROOT / "poker_rl_agent" / "scripts" / "evaluate_complete.py")
+        cmd = [
+            sys.executable,
+            script,
+            "--checkpoint",
+            checkpoint_path,
+            "--config_file",
+            config_path,
+            "--config_name",
+            "debug",
+            "--episodes_per_seed",
+            "2",
+            "--profile",
+            "quick",
+            "--seed",
+            "123",
+            "--output_json",
+            output_json,
+        ]
+        subprocess.run(cmd, check=True, cwd=str(PROJECT_ROOT), timeout=180)
+        payload = json.loads(Path(output_json).read_text())
+        assert "summary/random" in payload
+        assert "summary/always_call" in payload
+        assert "solver_tiers" in payload
+        assert isinstance(payload["solver_tiers"], list)
+        assert len(payload["solver_tiers"]) >= 2
+        assert "overall/pass_default_cfr_gate" in payload
+        assert "overall/pass_robustness_gate" in payload
+        assert "overall/pass_holdout_gate" in payload
+        assert "overall/pass_behavior_gate" in payload
+        assert "overall/pass_behavior_gate_extended" in payload
+        assert "overall/pass_all" in payload
+        assert "verification/solver_training_verified" in payload
+        assert "verification/control_zero_iter" in payload
+        assert "verification/control_delta_bb100" in payload
+        assert "diagnostics/summary" in payload
+        assert "holdout" in payload
+        assert "diagnostics/action_freq_preflop/half_pot" in payload["diagnostics/summary"]["random"]
+        assert "diagnostics/preflop_action_entropy_bits" in payload["diagnostics/summary"]["random"]
+        assert "diagnostics/preflop_dominant_action_freq" in payload["diagnostics/summary"]["random"]
+        assert "behavior_gate" in payload
+        assert "observed" in payload["behavior_gate"]
+        assert "behavior_gate_extended" in payload
+        assert "observed_call_check_freq" in payload["behavior_gate_extended"]
+        assert "observed_half_pot_freq" in payload["behavior_gate_extended"]
+        primary_seeds = {row["seed"] for row in payload["solver_tiers"][0]["per_seed"]}
+        holdout_seeds = {row["baseline/seed"] for row in payload["holdout"]["per_seed"]}
+        assert primary_seeds.isdisjoint(holdout_seeds)
+        tier0 = payload["solver_tiers"][0]
+        for key in ["iterations", "seeds", "per_seed", "aggregate", "ci95_lower_bb100", "pass_gate"]:
+            assert key in tier0
+
+
+def test_evaluate_complete_reproducibility_same_seed():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        cfg = Config()
+        cfg.HIDDEN_DIM = 64
+        cfg.NUM_LAYERS_CARD = 2
+        cfg.NUM_LAYERS_ACTION = 1
+        cfg.DEVICE = "cpu"
+        env = PokerEnv(env_preset="hunl_fcpa", betting_abstraction="fcpa")
+        model = AlphaHoldemNetwork(env.num_actions(), cfg)
+
+        checkpoint_path = os.path.join(temp_dir, "tmp_eval_complete_ckpt.pt")
+        torch.save({"model_state_dict": model.state_dict(), "step": 0}, checkpoint_path)
+        config_path = os.path.join(temp_dir, "eval_complete_test_config.yaml")
+        _write_temp_config(config_path)
+
+        script = str(PROJECT_ROOT / "poker_rl_agent" / "scripts" / "evaluate_complete.py")
+        out_a = os.path.join(temp_dir, "eval_complete_a.json")
+        out_b = os.path.join(temp_dir, "eval_complete_b.json")
+        base_cmd = [
+            sys.executable,
+            script,
+            "--checkpoint",
+            checkpoint_path,
+            "--config_file",
+            config_path,
+            "--config_name",
+            "debug",
+            "--episodes_per_seed",
+            "2",
+            "--profile",
+            "quick",
+            "--seed",
+            "777",
+        ]
+
+        subprocess.run(base_cmd + ["--output_json", out_a], check=True, cwd=str(PROJECT_ROOT), timeout=180)
+        subprocess.run(base_cmd + ["--output_json", out_b], check=True, cwd=str(PROJECT_ROOT), timeout=180)
+
+        a = json.loads(Path(out_a).read_text())
+        b = json.loads(Path(out_b).read_text())
+        assert len(a["solver_tiers"]) == len(b["solver_tiers"])
+        for idx in range(len(a["solver_tiers"])):
+            mean_a = a["solver_tiers"][idx]["aggregate"]["bb_per_100"]["mean"]
+            mean_b = b["solver_tiers"][idx]["aggregate"]["bb_per_100"]["mean"]
+            assert abs(mean_a - mean_b) < 1e-9
+
+
+def test_evaluate_complete_standard_profile_tiers():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "evaluate_complete.py"
+    spec = importlib.util.spec_from_file_location("evaluate_complete_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    tiers = module.build_profile_tiers("standard", 5000, "fcpa")
+    assert len(tiers) == 2
+    assert tiers[0]["iterations"] == 5000
+    assert tiers[0]["seeds"] == 5
+    assert tiers[1]["iterations"] == 10000
+    assert tiers[1]["seeds"] == 3
+
+
+def test_evaluate_complete_standard_profile_tiers_fullgame():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "evaluate_complete.py"
+    spec = importlib.util.spec_from_file_location("evaluate_complete_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    tiers = module.build_profile_tiers("standard", 5000, "fullgame")
+    assert len(tiers) == 2
+    assert tiers[0]["iterations"] == 2000
+    assert tiers[0]["seeds"] == 5
+    assert tiers[1]["iterations"] == 5000
+    assert tiers[1]["seeds"] == 3
+
+
+def test_evaluate_complete_verification_fails_for_zero_iter_tier():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "evaluate_complete.py"
+    spec = importlib.util.spec_from_file_location("evaluate_complete_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    tiers = [
+        {
+            "name": "default_cfr",
+            "iterations": 0,
+            "per_seed": [{"baseline/build_seconds": 0.1}],
+            "aggregate": {"bb_per_100": {"mean": 1.0}},
+        }
+    ]
+    verified, delta, errors = module._compute_solver_verification(tiers, control_bb100=0.0)
+    assert verified is False
+    assert "default_cfr:iterations<=0" in errors
+    assert "default_cfr" in delta
+
+
+def test_evaluate_complete_robustness_gate_toggle():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "evaluate_complete.py"
+    spec = importlib.util.spec_from_file_location("evaluate_complete_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    tier = {
+        "ci95_lower_bb100": -0.25,
+        "aggregate": {"bb_per_100": {"mean": 0.1}},
+    }
+    assert module._passes_robustness_gate(tier, require_robust_ci=False) is True
+    assert module._passes_robustness_gate(tier, require_robust_ci=True) is False
+
+
+def test_evaluate_complete_behavior_gate_toggle():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "evaluate_complete.py"
+    spec = importlib.util.spec_from_file_location("evaluate_complete_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    cfg = Config()
+    cfg.BEHAVIOR_GATE_ENABLE = True
+    cfg.BEHAVIOR_GATE_MAX_FOLD_FREQ = 0.78
+    cfg.BEHAVIOR_GATE_MAX_ALLIN_FREQ = 0.06
+    cfg.BEHAVIOR_GATE_MIN_PRE_FLOP_ENTROPY_BITS = 0.75
+
+    good = {
+        "diagnostics/action_freq_preflop/fold": 0.70,
+        "diagnostics/action_freq_preflop/allin": 0.03,
+        "diagnostics/preflop_action_entropy_bits": 0.90,
+    }
+    bad_fold = {
+        "diagnostics/action_freq_preflop/fold": 0.90,
+        "diagnostics/action_freq_preflop/allin": 0.03,
+        "diagnostics/preflop_action_entropy_bits": 0.90,
+    }
+    bad_entropy = {
+        "diagnostics/action_freq_preflop/fold": 0.70,
+        "diagnostics/action_freq_preflop/allin": 0.03,
+        "diagnostics/preflop_action_entropy_bits": 0.30,
+    }
+
+    assert module._passes_behavior_gate(cfg, good) is True
+    assert module._passes_behavior_gate(cfg, bad_fold) is False
+    assert module._passes_behavior_gate(cfg, bad_entropy) is False
+
+
+def test_evaluate_complete_extended_behavior_gate_toggle():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "evaluate_complete.py"
+    spec = importlib.util.spec_from_file_location("evaluate_complete_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    cfg = Config()
+    cfg.BEHAVIOR_GATE_ENABLE = True
+    cfg.BEHAVIOR_GATE_MIN_CALL_CHECK_FREQ = 0.50
+    cfg.BEHAVIOR_GATE_MIN_HALF_POT_FREQ = 0.01
+
+    good = {
+        "diagnostics/action_freq_preflop/call_check": 0.60,
+        "diagnostics/action_freq_preflop/half_pot": 0.02,
+    }
+    bad_call = {
+        "diagnostics/action_freq_preflop/call_check": 0.40,
+        "diagnostics/action_freq_preflop/half_pot": 0.02,
+    }
+    bad_half = {
+        "diagnostics/action_freq_preflop/call_check": 0.60,
+        "diagnostics/action_freq_preflop/half_pot": 0.0,
+    }
+
+    assert module._passes_behavior_gate_extended(cfg, good) is True
+    assert module._passes_behavior_gate_extended(cfg, bad_call) is False
+    assert module._passes_behavior_gate_extended(cfg, bad_half) is False
+
+
+def test_evaluate_complete_primary_seed_set_helper():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "evaluate_complete.py"
+    spec = importlib.util.spec_from_file_location("evaluate_complete_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    tiers = module.build_profile_tiers("standard", 10, "fcpa")
+    seeds = module._primary_eval_seed_set(42, tiers)
+    assert seeds == {42, 43, 44, 45, 46}
+
+
+def test_wandb_import_payload_filtering():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "wandb_import_jsonl.py"
+    spec = importlib.util.spec_from_file_location("wandb_import_jsonl_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    record = {
+        "_step": 7,
+        "train/policy_loss": -0.01,
+        "train/value_loss": 0.23,
+        "meta/config_name": "quadro_stage_c_fcpa",
+        "flag": True,
+    }
+    step, payload = module._to_wandb_payload(record, "_step", re.compile(r"^train/"))
+    assert step == 7
+    assert "train/policy_loss" in payload
+    assert "train/value_loss" in payload
+    assert "meta/config_name" not in payload
+
+
+def test_archive_run_script_creates_snapshot_manifest():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp = Path(temp_dir)
+        checkpoint_path = temp / "latest.pt"
+        metrics_path = temp / "metrics.jsonl"
+        eval_path = temp / "eval.json"
+        config_path = temp / "cfg.yaml"
+        archive_root = temp / "artifacts"
+
+        torch.save({"step": 123, "model_state_dict": {}}, checkpoint_path)
+        metrics_path.write_text(
+            json.dumps({"iteration": 120, "train/nonfinite_grad_skips": 0, "train/nonfinite_loss_batches": 0})
+            + "\n",
+            encoding="utf-8",
+        )
+        eval_path.write_text(
+            json.dumps(
+                {
+                    "overall/pass_all": True,
+                    "overall/pass_default_cfr_gate": True,
+                    "overall/pass_robustness_gate": True,
+                    "overall/pass_holdout_gate": True,
+                    "verification/solver_training_verified": True,
+                }
+            ),
+            encoding="utf-8",
+        )
+        config_path.write_text("default:\n  BETTING_ABSTRACTION: \"fcpa\"\n", encoding="utf-8")
+
+        script = str(PROJECT_ROOT / "poker_rl_agent" / "scripts" / "archive_run.py")
+        cmd = [
+            sys.executable,
+            script,
+            "--run_name",
+            "snapshot_test",
+            "--stage",
+            "stage_c_fcpa",
+            "--checkpoint",
+            str(checkpoint_path),
+            "--metrics",
+            str(metrics_path),
+            "--eval_json",
+            str(eval_path),
+            "--config_file",
+            str(config_path),
+            "--config_name",
+            "default",
+            "--archive_root",
+            str(archive_root),
+        ]
+        subprocess.run(cmd, check=True, cwd=str(PROJECT_ROOT), timeout=120)
+        run_dirs = [p for p in archive_root.iterdir() if p.is_dir()]
+        assert len(run_dirs) == 1
+        out = run_dirs[0]
+        assert (out / "model" / "latest.pt").exists()
+        assert (out / "eval" / "eval.json").exists()
+        assert (out / "metrics" / "metrics.jsonl").exists()
+        assert (out / "config" / "config_snapshot.yaml").exists()
+        assert (out / "manifest.json").exists()
+        assert checkpoint_path.exists()

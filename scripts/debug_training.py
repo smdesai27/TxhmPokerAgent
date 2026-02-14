@@ -34,6 +34,7 @@ def load_config(config_path, config_name="default"):
             setattr(base_config, k, v)
         else:
             print(f"Warning: Config key {k} not found in Config class")
+    base_config.CONFIG_NAME = str(config_name)
     if hasattr(base_config, "sync_legacy_fields"):
         base_config.sync_legacy_fields()
             
@@ -46,6 +47,14 @@ def main():
     args = parser.parse_args()
     
     config = load_config(args.config_file, args.config_name)
+    strict_abstraction_env = os.environ.get("STRICT_ABSTRACTION")
+    if strict_abstraction_env is not None:
+        config.STRICT_ABSTRACTION = str(strict_abstraction_env).strip().lower() in {"1", "true", "yes", "on"}
+    if args.config_name == "quadro_stage_d_fcpha":
+        print(
+            "Warning: preset 'quadro_stage_d_fcpha' is legacy; "
+            "using canonical FCHPA abstraction behavior."
+        )
     print(f"Loaded Config: {args.config_name}")
     print(config)
     

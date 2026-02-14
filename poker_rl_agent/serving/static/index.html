@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AlphaHoldem Poker</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>AlphaHoldem Poker</h1>
+    <label>
+      Seat:
+      <select id="seat-select">
+        <option value="0">P0 (Small Blind)</option>
+        <option value="1">P1 (Big Blind)</option>
+      </select>
+    </label>
+    <button id="btn-new-session">New Session</button>
+    <button id="btn-new-hand" disabled>New Hand</button>
+    <label class="toggle-label">
+      <input type="checkbox" id="chk-auto-continue">
+      Auto-continue
+    </label>
+  </header>
+
+  <div class="main-layout">
+    <div class="table-area">
+      <div class="poker-table" id="poker-table">
+        <div class="player-area" id="bot-area">
+          <span class="player-label">Bot</span>
+          <span class="player-stack" id="bot-stack"></span>
+          <div class="cards" id="bot-cards"></div>
+        </div>
+
+        <div class="board-area">
+          <span class="street-label" id="street-label"></span>
+          <div class="cards" id="board-cards"></div>
+          <span class="pot-label" id="pot-label"></span>
+        </div>
+
+        <div class="player-area" id="hero-area">
+          <div class="cards" id="hero-cards"></div>
+          <span class="player-stack" id="hero-stack"></span>
+          <span class="player-label">You</span>
+        </div>
+
+        <p class="placeholder-msg" id="placeholder">Click "New Session" to start playing.</p>
+      </div>
+
+      <div class="actions-bar" id="actions-bar"></div>
+    </div>
+
+    <div class="sidebar">
+      <h3>Session Stats</h3>
+      <div class="stats-section" id="stats-section">
+        <div class="stat-row"><span class="stat-label">Hands played</span><span id="stat-hands">-</span></div>
+        <div class="stat-row"><span class="stat-label">Your chips</span><span id="stat-human-chips">-</span></div>
+        <div class="stat-row"><span class="stat-label">Your bb</span><span id="stat-human-bb">-</span></div>
+        <div class="stat-row"><span class="stat-label">Bot chips</span><span id="stat-bot-chips">-</span></div>
+        <div class="stat-row"><span class="stat-label">Bot bb</span><span id="stat-bot-bb">-</span></div>
+      </div>
+      <h3>Hand History</h3>
+      <div class="history-log" id="history-log"></div>
+    </div>
+  </div>
+
+  <div class="result-overlay hidden" id="result-overlay">
+    <div class="result-card">
+      <h2>Hand Complete</h2>
+      <div class="chips" id="result-chips"></div>
+      <div id="result-details"></div>
+      <button id="result-next">Next Hand</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
