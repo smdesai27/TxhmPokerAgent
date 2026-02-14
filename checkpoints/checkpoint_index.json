@@ -1,0 +1,21 @@
+{
+  "generated_utc": "2026-02-14T18:37:38.887546+00:00",
+  "root": "/Users/sanildesai/Documents/CodeProjects/AntigravityPokerAgent/checkpoints",
+  "count": 2,
+  "records": [
+    {
+      "path": "latest.pt",
+      "role": "active",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-14T16:21:48+00:00",
+      "sha256": "eb938f40f969502da824f2ade0bbde4478e6150550544cc30452c363d0565a4e"
+    },
+    {
+      "path": "snapshots/stage_d/ablate_a_latest.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-14T16:21:49+00:00",
+      "sha256": "eb938f40f969502da824f2ade0bbde4478e6150550544cc30452c363d0565a4e"
+    }
+  ]
+}
