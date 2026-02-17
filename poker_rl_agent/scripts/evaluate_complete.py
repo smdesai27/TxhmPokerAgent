@@ -15,7 +15,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
 from poker_rl_agent.environment.openspiel_wrapper import PokerEnv
-from poker_rl_agent.evaluation.baseline_agents import AlwaysCallAgent, RandomAgent
+from poker_rl_agent.evaluation.baseline_agents import AlwaysCallAgent, PotPressureAgent, RandomAgent
 from poker_rl_agent.evaluation.evaluator import Evaluator
 from poker_rl_agent.models.alpha_holdem_net import AlphaHoldemNetwork
 from poker_rl_agent.training.checkpointing import load_checkpoint
@@ -128,6 +128,18 @@ def _diag_from_metrics(row: Dict[str, float]) -> Dict[str, float]:
         "diagnostics/action_freq_preflop/allin": allin,
         "diagnostics/preflop_action_entropy_bits": preflop_entropy_bits,
         "diagnostics/preflop_dominant_action_freq": preflop_dominant_action_freq,
+        "diagnostics/preflop_legal_rate/pot_raise": float(
+            row.get("diagnostics/preflop_legal_rate/pot_raise", 0.0)
+        ),
+        "diagnostics/preflop_legal_rate/half_pot": float(
+            row.get("diagnostics/preflop_legal_rate/half_pot", 0.0)
+        ),
+        "diagnostics/preflop_choose_given_legal/pot_raise": float(
+            row.get("diagnostics/preflop_choose_given_legal/pot_raise", 0.0)
+        ),
+        "diagnostics/preflop_choose_given_legal/half_pot": float(
+            row.get("diagnostics/preflop_choose_given_legal/half_pot", 0.0)
+        ),
         "diagnostics/showdown_rate": float(row.get("diagnostics/showdown_rate", 0.0)),
         "diagnostics/avg_pot_size_bb": float(row.get("diagnostics/avg_pot_size_bb", 0.0)),
     }
@@ -140,6 +152,14 @@ def _aggregate_diagnostics(rows: List[Dict[str, float]]) -> Dict[str, float]:
     pot_raise = int(sum(int(r.get("diagnostics/_preflop_count_pot_raise", 0)) for r in rows))
     allin = int(sum(int(r.get("diagnostics/_preflop_count_allin", 0)) for r in rows))
     preflop_total = int(sum(int(r.get("diagnostics/_preflop_total_count", 0)) for r in rows))
+    preflop_legal_pot = int(sum(int(r.get("diagnostics/_preflop_legal_count_pot_raise", 0)) for r in rows))
+    preflop_legal_half = int(sum(int(r.get("diagnostics/_preflop_legal_count_half_pot", 0)) for r in rows))
+    preflop_choose_pot_legal = int(
+        sum(int(r.get("diagnostics/_preflop_choose_legal_count_pot_raise", 0)) for r in rows)
+    )
+    preflop_choose_half_legal = int(
+        sum(int(r.get("diagnostics/_preflop_choose_legal_count_half_pot", 0)) for r in rows)
+    )
     showdown_hands = int(sum(int(r.get("diagnostics/_showdown_hands", 0)) for r in rows))
     total_hands = int(sum(int(r.get("diagnostics/_total_hands", 0)) for r in rows))
     total_terminal_pot_bb = float(sum(float(r.get("diagnostics/_total_terminal_pot_bb", 0.0)) for r in rows))
@@ -170,9 +190,21 @@ def _aggregate_diagnostics(rows: List[Dict[str, float]]) -> Dict[str, float]:
                 "diagnostics/action_freq_preflop/allin": float(allin) / float(preflop_denom),
             }
         )["diagnostics/preflop_dominant_action_freq"],
+        "diagnostics/preflop_legal_rate/pot_raise": float(preflop_legal_pot) / float(preflop_denom),
+        "diagnostics/preflop_legal_rate/half_pot": float(preflop_legal_half) / float(preflop_denom),
+        "diagnostics/preflop_choose_given_legal/pot_raise": (
+            float(preflop_choose_pot_legal) / float(max(1, preflop_legal_pot))
+        ),
+        "diagnostics/preflop_choose_given_legal/half_pot": (
+            float(preflop_choose_half_legal) / float(max(1, preflop_legal_half))
+        ),
         "diagnostics/showdown_rate": float(showdown_hands) / float(hand_denom),
         "diagnostics/avg_pot_size_bb": float(total_terminal_pot_bb) / float(hand_denom),
         "diagnostics/_preflop_total_count": int(preflop_total),
+        "diagnostics/_preflop_legal_count_pot_raise": int(preflop_legal_pot),
+        "diagnostics/_preflop_legal_count_half_pot": int(preflop_legal_half),
+        "diagnostics/_preflop_choose_legal_count_pot_raise": int(preflop_choose_pot_legal),
+        "diagnostics/_preflop_choose_legal_count_half_pot": int(preflop_choose_half_legal),
         "diagnostics/_total_hands": int(total_hands),
     }
 
@@ -252,6 +284,139 @@ def _passes_behavior_gate_extended(config, metrics_row: Dict[str, object]) -> bo
     return bool(call_check_freq >= min_call_check and half_pot_freq >= min_half_pot)
 
 
+def _passes_aggression_gate(config, metrics_row: Dict[str, object]) -> tuple[bool, Dict[str, float]]:
+    enabled = bool(getattr(config, "EVAL_AGGRESSION_GATE_ENABLE", True))
+    half_pot_freq = float(metrics_row.get("diagnostics/action_freq_preflop/half_pot", 0.0))
+    pot_raise_freq = float(metrics_row.get("diagnostics/action_freq_preflop/pot_raise", 0.0))
+    allin_freq = float(metrics_row.get("diagnostics/action_freq_preflop/allin", 0.0))
+    raise_total_freq = half_pot_freq + pot_raise_freq + allin_freq
+    min_raise_total = float(getattr(config, "EVAL_MIN_PRE_FLOP_RAISE_TOTAL_FREQ", 0.08))
+    passed = bool((not enabled) or raise_total_freq >= min_raise_total)
+    return passed, {
+        "enabled": bool(enabled),
+        "min_preflop_raise_total_freq": float(min_raise_total),
+        "observed_preflop_raise_total_freq": float(raise_total_freq),
+        "observed_half_pot_freq": float(half_pot_freq),
+        "observed_pot_raise_freq": float(pot_raise_freq),
+        "observed_allin_freq": float(allin_freq),
+    }
+
+
+def _passes_behavior_envelope(config, metrics_row: Dict[str, object]) -> tuple[bool, Dict[str, float]]:
+    enabled = bool(getattr(config, "EVAL_ENVELOPE_ENABLE", False))
+    fold_freq = float(metrics_row.get("diagnostics/action_freq_preflop/fold", 0.0))
+    call_check_freq = float(metrics_row.get("diagnostics/action_freq_preflop/call_check", 0.0))
+    allin_freq = float(metrics_row.get("diagnostics/action_freq_preflop/allin", 0.0))
+    entropy_bits = float(metrics_row.get("diagnostics/preflop_action_entropy_bits", 0.0))
+
+    min_fold = float(getattr(config, "EVAL_MIN_PRE_FLOP_FOLD_FREQ", 0.35))
+    max_fold = float(getattr(config, "EVAL_MAX_PRE_FLOP_FOLD_FREQ", 0.55))
+    min_call = float(getattr(config, "EVAL_MIN_PRE_FLOP_CALL_CHECK_FREQ", 0.40))
+    max_allin = float(getattr(config, "EVAL_MAX_PRE_FLOP_ALLIN_FREQ", 0.05))
+    min_entropy = float(getattr(config, "EVAL_MIN_PRE_FLOP_ENTROPY_BITS", 1.10))
+    max_entropy = float(getattr(config, "EVAL_MAX_PRE_FLOP_ENTROPY_BITS", 1.80))
+
+    if not enabled:
+        passed = True
+    else:
+        passed = bool(
+            min_fold <= fold_freq <= max_fold
+            and call_check_freq >= min_call
+            and allin_freq <= max_allin
+            and min_entropy <= entropy_bits <= max_entropy
+        )
+
+    return passed, {
+        "enabled": bool(enabled),
+        "min_preflop_fold_freq": float(min_fold),
+        "max_preflop_fold_freq": float(max_fold),
+        "min_preflop_call_check_freq": float(min_call),
+        "max_preflop_allin_freq": float(max_allin),
+        "min_preflop_entropy_bits": float(min_entropy),
+        "max_preflop_entropy_bits": float(max_entropy),
+        "observed_preflop_fold_freq": float(fold_freq),
+        "observed_preflop_call_check_freq": float(call_check_freq),
+        "observed_preflop_allin_freq": float(allin_freq),
+        "observed_preflop_entropy_bits": float(entropy_bits),
+    }
+
+
+def _load_solver_style_target(style_profile_path: str) -> Dict[str, float]:
+    if not style_profile_path:
+        return {}
+    if not os.path.exists(style_profile_path):
+        return {}
+    try:
+        payload = json.loads(open(style_profile_path, "r", encoding="utf-8").read())
+    except Exception:
+        return {}
+
+    target = payload.get("target", {})
+    if not isinstance(target, dict):
+        target = {}
+
+    return {
+        "target_pot_given_legal": float(
+            payload.get(
+                "target/preflop_choose_given_legal/pot_raise",
+                target.get("preflop_choose_given_legal/pot_raise", 0.0),
+            )
+        ),
+        "target_half_given_legal": float(
+            payload.get(
+                "target/preflop_choose_given_legal/half_pot",
+                target.get("preflop_choose_given_legal/half_pot", 0.0),
+            )
+        ),
+        "target_fold": float(target.get("fold", 0.0)),
+        "target_call_check": float(target.get("call_check", 0.0)),
+        "target_half_pot": float(target.get("half_pot", 0.0)),
+        "target_pot_raise": float(target.get("pot_raise", 0.0)),
+        "target_allin": float(target.get("allin", 0.0)),
+    }
+
+
+def _passes_pot_mix_gate(config, metrics_row: Dict[str, object], solver_target: Dict[str, float]) -> tuple[bool, Dict[str, float]]:
+    abstraction = str(getattr(config, "BETTING_ABSTRACTION", "fcpa")).lower()
+    if abstraction not in {"fchpa", "fcpha"}:
+        return True, {
+            "enabled": False,
+            "skipped_non_fchpa": True,
+            "required_choose_given_legal_pot_raise": 0.0,
+            "observed_choose_given_legal_pot_raise": float(
+                metrics_row.get("diagnostics/preflop_choose_given_legal/pot_raise", 0.0)
+            ),
+            "solver_target_choose_given_legal_pot_raise": 0.0,
+        }
+
+    enabled = bool(getattr(config, "EVAL_POT_MIX_GATE_ENABLE", True))
+    observed = float(metrics_row.get("diagnostics/preflop_choose_given_legal/pot_raise", 0.0))
+    target_pot_given_legal = float(solver_target.get("target_pot_given_legal", 0.0))
+    min_abs = float(getattr(config, "EVAL_POT_MIX_MIN_ABS", 0.01))
+    target_fraction = float(getattr(config, "EVAL_POT_MIX_TARGET_FRACTION", 0.60))
+    required = max(min_abs, target_fraction * target_pot_given_legal)
+    passed = bool((not enabled) or observed >= required)
+    return passed, {
+        "enabled": bool(enabled),
+        "required_choose_given_legal_pot_raise": float(required),
+        "observed_choose_given_legal_pot_raise": float(observed),
+        "solver_target_choose_given_legal_pot_raise": float(target_pot_given_legal),
+    }
+
+
+def _compute_exploit_weighted_score(random_stats: Dict[str, object], call_stats: Dict[str, object], pot_stats: Dict[str, object]):
+    random_bb = float(random_stats.get("bb_per_100", 0.0))
+    call_bb = float(call_stats.get("bb_per_100", 0.0))
+    pot_bb = float(pot_stats.get("bb_per_100", 0.0))
+    weighted = (0.25 * random_bb) + (0.35 * call_bb) + (0.40 * pot_bb)
+    return {
+        "random_bb100": random_bb,
+        "always_call_bb100": call_bb,
+        "pot_pressure_bb100": pot_bb,
+        "weighted_bb100": float(weighted),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", type=str, required=True)
@@ -262,6 +427,12 @@ def main():
     parser.add_argument("--holdout_seed_base", type=int, default=10042)
     parser.add_argument("--holdout_seed_count", type=int, default=5)
     parser.add_argument("--require_robust_ci", action="store_true")
+    parser.add_argument(
+        "--require_behavior_extended",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Require behavior-extended gate in overall/pass_all. Defaults to config EVAL_REQUIRE_BEHAVIOR_EXTENDED.",
+    )
     parser.add_argument(
         "--verify_solver_training",
         action=argparse.BooleanOptionalAction,
@@ -332,10 +503,19 @@ def main():
         seed=base_seed + 1,
         collect_diagnostics=True,
     )
+    pot_pressure_stats = evaluator.evaluate(
+        PotPressureAgent(),
+        num_episodes=int(args.episodes_per_seed),
+        seed=base_seed + 2,
+        collect_diagnostics=True,
+    )
     print(
         f"Random BB/100={random_stats['bb_per_100']:.3f} | "
-        f"AlwaysCall BB/100={call_stats['bb_per_100']:.3f}"
+        f"AlwaysCall BB/100={call_stats['bb_per_100']:.3f} | "
+        f"PotPressure BB/100={pot_pressure_stats['bb_per_100']:.3f}"
     )
+
+    exploit_summary = _compute_exploit_weighted_score(random_stats, call_stats, pot_pressure_stats)
 
     control_episodes = min(int(args.episodes_per_seed), 2000)
     control_zero_iter = evaluator.evaluate_vs_solver_baseline(
@@ -444,13 +624,26 @@ def main():
     behavior_row = default_tier if default_tier is not None else holdout_diag
     pass_behavior_gate = _passes_behavior_gate(config, behavior_row)
     pass_behavior_gate_extended = _passes_behavior_gate_extended(config, behavior_row)
+    pass_aggression_gate, aggression_gate_row = _passes_aggression_gate(config, behavior_row)
+    pass_behavior_envelope, behavior_envelope_row = _passes_behavior_envelope(config, behavior_row)
+    if args.require_behavior_extended is None:
+        require_behavior_extended = bool(getattr(config, "EVAL_REQUIRE_BEHAVIOR_EXTENDED", True))
+    else:
+        require_behavior_extended = bool(args.require_behavior_extended)
 
     verification_ok = bool((not args.verify_solver_training) or solver_training_verified)
+    exploit_weight = float(getattr(config, "EVAL_EXPLOIT_WEIGHT", 0.20))
+    exploit_clip = float(getattr(config, "EVAL_EXPLOIT_CLIP_BB100", 500.0))
+    clipped_exploit = float(np.clip(exploit_summary["weighted_bb100"], -abs(exploit_clip), abs(exploit_clip)))
+    winner_score = float(default_tier["ci95_lower_bb100"] + (exploit_weight * clipped_exploit)) if default_tier else 0.0
     pass_all = bool(
         pass_default_cfr_gate
         and pass_robustness_gate
         and pass_holdout_gate
         and pass_behavior_gate
+        and ((not require_behavior_extended) or pass_behavior_gate_extended)
+        and pass_aggression_gate
+        and pass_behavior_envelope
         and verification_ok
     )
 
@@ -458,6 +651,8 @@ def main():
         f"Overall gates: default_cfr={pass_default_cfr_gate}, "
         f"robustness={pass_robustness_gate}, holdout={pass_holdout_gate}, "
         f"behavior={pass_behavior_gate}, behavior_extended={pass_behavior_gate_extended}, "
+        f"aggression={pass_aggression_gate}, envelope={pass_behavior_envelope}, "
+        f"require_behavior_extended={require_behavior_extended}, "
         f"verified={solver_training_verified}, pass_all={pass_all}"
     )
 
@@ -473,6 +668,8 @@ def main():
         "meta/strict_abstraction": bool(strict_abstraction),
         "summary/random": random_stats,
         "summary/always_call": call_stats,
+        "summary/pot_pressure": pot_pressure_stats,
+        "summary/exploit_weighted": exploit_summary,
         "solver_tiers": solver_tiers,
         "verification/solver_training_verified": bool(solver_training_verified),
         "verification/control_zero_iter": control_zero_iter,
@@ -501,6 +698,13 @@ def main():
         "overall/pass_holdout_gate": pass_holdout_gate,
         "overall/pass_behavior_gate": pass_behavior_gate,
         "overall/pass_behavior_gate_extended": pass_behavior_gate_extended,
+        "overall/pass_aggression_gate": pass_aggression_gate,
+        "overall/pass_behavior_envelope": pass_behavior_envelope,
+        # Backwards-compatible alias retained for older scripts.
+        "overall/pass_pot_mix_gate": pass_aggression_gate,
+        "overall/require_behavior_extended": bool(require_behavior_extended),
+        "overall/exploit_weighted_bb100": float(exploit_summary["weighted_bb100"]),
+        "overall/winner_score": float(winner_score),
         "overall/pass_all": pass_all,
         "behavior_gate": {
             "enabled": bool(getattr(config, "BEHAVIOR_GATE_ENABLE", True)),
@@ -524,6 +728,17 @@ def main():
                 behavior_row.get("diagnostics/action_freq_preflop/half_pot", 0.0)
             ),
             "pass": bool(pass_behavior_gate_extended),
+        },
+        "aggression_gate": aggression_gate_row,
+        "behavior_envelope": behavior_envelope_row,
+        # Backwards-compatible alias retained for older scripts.
+        "pot_mix_gate": aggression_gate_row,
+        "selection_score": {
+            "default_ci95_lower_bb100": float(default_tier["ci95_lower_bb100"]) if default_tier else 0.0,
+            "exploit_weight": float(exploit_weight),
+            "exploit_clip_bb100": float(exploit_clip),
+            "clipped_exploit_bb100": float(clipped_exploit),
+            "winner_score": float(winner_score),
         },
     }
 

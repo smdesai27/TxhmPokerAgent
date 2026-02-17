@@ -1,0 +1,11 @@
+{
+  "runs": [
+    {
+      "best_checkpoint_path": "checkpoints/snapshots/stage_d/recovery/selected_21k_auto_20260216_161321.pt",
+      "best_eval_path": "logs/stage_d/eval/eval_selected_21k_auto_cert_20260216_161321.json",
+      "created_at_utc": "2026-02-17T03:47:37.118644+00:00",
+      "manifest_path": "artifacts/runs/20260216_161321_stage_d_evfirst_cycle/manifest.json",
+      "run_label": "20260216_161321_stage_d_evfirst_cycle"
+    }
+  ]
+}
