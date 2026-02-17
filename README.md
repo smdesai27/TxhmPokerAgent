@@ -217,6 +217,44 @@ sbatch --export=ALL,CONFIG_NAME=quadro_stage_d_fchpa_recover_explore_corrective_
 sbatch --export=ALL,CONFIG_NAME=quadro_stage_d_fchpa_recover_explore_corrective_17k,WANDB_MODE=online scripts/slurm_stage_d_fchpa_selected_16k_cert_eval.slurm
 ```
 
+Stage D 16k -> corrective 17k -> long 20k flow (balanced EV + behavior):
+```bash
+# 1) Freeze current 16k as champion snapshot
+scripts/stage_d_freeze_champion.sh checkpoints/latest.pt stage_d_16k_champion stage_d_16k_champion_latest.pt
+
+# 2) Corrective continuation to 17k (diverse corrective family)
+sbatch --export=ALL,CONFIG_NAME=quadro_stage_d_fchpa_recover_diverse_corrective_17k,WANDB_MODE=online,WANDB_RUN_GROUP=stage_d_corrective_17k scripts/slurm_stage_d_fchpa_corrective_train.slurm
+
+# 3) Screening eval after 17k
+sbatch --export=ALL,CONFIG_NAME=quadro_stage_d_fchpa_recover_diverse_corrective_17k,EPISODES_PER_SEED=5000 scripts/slurm_stage_d_fchpa_corrective_screen_eval.slurm
+
+# 4) Gate check (requires behavior_extended and CI floor >= 830)
+sbatch --export=ALL,EVAL_JSON=logs/stage_d/eval/eval_quadro_stage_d_fchpa_recover_diverse_corrective_17k_screen_<jobid>.json,BASELINE_EVAL_JSON=logs/stage_d/eval/eval_quadro_stage_d_fchpa_recover_explore_16k_cert_375207.json,CI_FLOOR=830 scripts/slurm_stage_d_fchpa_eval_gate_check.slurm
+
+# 5) If behavior_extended fails but EV stays strong: 17k -> 18k value-stable corrective
+sbatch --export=ALL,CONFIG_NAME=quadro_stage_d_fchpa_recover_value_stable_corrective_18k,WANDB_MODE=online,WANDB_RUN_GROUP=stage_d_corrective_18k scripts/slurm_stage_d_fchpa_corrective_train.slurm
+sbatch --export=ALL,CONFIG_NAME=quadro_stage_d_fchpa_recover_value_stable_corrective_18k,EPISODES_PER_SEED=5000 scripts/slurm_stage_d_fchpa_corrective_screen_eval.slurm
+
+# 6) If gates pass: long continuation to 20k (winning family) + full cert eval
+sbatch --export=ALL,CONFIG_NAME=quadro_stage_d_fchpa_recover_diverse_corrective_20k,WANDB_MODE=online,WANDB_RUN_GROUP=stage_d_long_20k scripts/slurm_stage_d_fchpa_corrective_train.slurm
+sbatch --export=ALL,CONFIG_NAME=quadro_stage_d_fchpa_recover_diverse_corrective_20k,EPISODES_PER_SEED=10000,REQUIRE_ROBUST_CI=true scripts/slurm_stage_d_fchpa_corrective_cert_eval.slurm
+```
+
+Stage D recovery cycle (automated probes + winner selection + promotion):
+```bash
+# Runs:
+# Probe A (balanced 19k) -> screen -> gate
+# Probe B (conservative 19k) -> screen -> gate
+# Winner selection by CI + behavior envelope
+# Winner promotion to selected 20k -> screen -> gate -> cert
+bash scripts/submit_stage_d_fchpa_recovery_cycle.sh
+```
+
+Human validation transcript (200-hand FCHPA CLI session):
+```bash
+bash scripts/run_stage_d_human_validation.sh
+```
+
 Stage D artifact locations:
 - `logs/stage_d/slurm/`
 - `logs/stage_d/eval/`
@@ -228,6 +266,16 @@ Cleanup and checkpoint indexing:
 scripts/organize_workspace.sh --apply
 python poker_rl_agent/scripts/checkpoint_manager.py organize --root checkpoints --apply
 python poker_rl_agent/scripts/checkpoint_manager.py index --root checkpoints --apply
+```
+
+Manual gate check from terminal (without SLURM wrapper):
+```bash
+python poker_rl_agent/scripts/check_eval_gates.py \
+  --eval_json logs/stage_d/eval/eval_quadro_stage_d_fchpa_recover_diverse_corrective_17k_screen_<jobid>.json \
+  --baseline_eval_json logs/stage_d/eval/eval_quadro_stage_d_fchpa_recover_explore_16k_cert_375207.json \
+  --ci_floor 830 \
+  --require_behavior_extended \
+  --require_solver_verified
 ```
 
 Create a named snapshot from current latest:

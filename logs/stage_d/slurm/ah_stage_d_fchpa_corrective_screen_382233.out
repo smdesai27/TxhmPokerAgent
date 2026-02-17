@@ -1,0 +1,40 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 382233
+##  Job Name : ah_stage_d_fchpa_corrective_screen
+##  Nodelist : gpu2105
+##      CPUs : 1
+##  Mem/Node : 32768 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Sun Feb 15 09:38:04 PM EST 2026
+###############################################################################
+Job: ah_stage_d_fchpa_corrective_screen (382233)
+Node: gpu2105
+Date: Sun Feb 15 09:38:04 PM EST 2026
+Submit dir: /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+-------------------
+Running Stage D corrective SCREEN evaluation:
+  checkpoint=checkpoints/snapshots/stage_d/recovery/quadro_stage_d_fchpa_recover_selected_20k_20260215_202915.pt
+  config=quadro_stage_d_fchpa_recover_selected_20k
+  episodes_per_seed=5000
+  holdout_seed_base=99142
+  holdout_seed_count=5
+  output=logs/stage_d/eval/eval_quadro_stage_d_fchpa_recover_selected_20k_screen_20260215_202915.json
+Optional module pokerkit_wrapper was not importable: No module named 'pokerkit'
+Evaluator device: cuda
+Running complete eval profile='standard' with 2 solver tier(s), seed base=42
+Random BB/100=620.250 | AlwaysCall BB/100=74.520
+Control baseline (0-iter MCCFR-ES): bb/100=438.600, build_s=0.000
+Tier 'default_cfr': baseline=mccfr_external_sampling, iters=5000, seeds=5, episodes/seed=5000
+  seed=42: bb/100=604.400, stderr=110.473, build_s=80.001
+  seed=43: bb/100=755.960, stderr=109.628, build_s=79.553
+  seed=44: bb/100=810.610, stderr=108.444, build_s=79.533
+  seed=45: bb/100=833.260, stderr=109.765, build_s=80.238
+  seed=46: bb/100=999.320, stderr=113.024, build_s=79.497
+  aggregate: mean=800.710, stderr=63.696, ci95=+/-124.844, lower=675.866, pass=True
+Tier 'robustness': baseline=mccfr_external_sampling, iters=10000, seeds=3, episodes/seed=5000
+  seed=42: bb/100=716.680, stderr=108.225, build_s=154.370
+  seed=43: bb/100=873.710, stderr=112.678, build_s=155.141
+  seed=44: bb/100=835.080, stderr=109.677, build_s=157.188
+  aggregate: mean=808.490, stderr=47.240, ci95=+/-92.591, lower=715.899, pass=True
+Overall gates: default_cfr=True, robustness=True, holdout=True, behavior=True, behavior_extended=False, require_behavior_extended=True, verified=True, pass_all=False
+Wrote complete evaluation report: logs/stage_d/eval/eval_quadro_stage_d_fchpa_recover_selected_20k_screen_20260215_202915.json

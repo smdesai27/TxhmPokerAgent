@@ -1,0 +1,56 @@
+{
+  "selected": null,
+  "candidates": [
+    {
+      "name": "probe_a",
+      "config_name": "quadro_stage_d_fchpa_recover_balanced_probe_19k",
+      "checkpoint": "checkpoints/snapshots/stage_d/recovery/quadro_stage_d_fchpa_recover_balanced_probe_19k_20260215_155748.pt",
+      "eval_json": "logs/stage_d/eval/eval_quadro_stage_d_fchpa_recover_balanced_probe_19k_screen_20260215_155748.json",
+      "default_mean_bb100": 1047.318,
+      "default_ci95_lower_bb100": 944.4250862226635,
+      "robust_mean_bb100": 1111.3166666666668,
+      "robust_ci95_lower_bb100": 974.828378747479,
+      "fold_freq": 0.34250286547879544,
+      "call_check_freq": 0.6416588517244972,
+      "half_pot_freq": 0.0001389323052342746,
+      "allin_freq": 0.01569935049147303,
+      "preflop_entropy_bits": 1.0360535280243293,
+      "eligible": false,
+      "reasons": [
+        "behavior_extended_gate_fail",
+        "envelope:half>=min",
+        "envelope:fold>=min",
+        "envelope:entropy>=min"
+      ]
+    },
+    {
+      "name": "probe_b",
+      "config_name": "quadro_stage_d_fchpa_recover_conservative_probe_19k",
+      "checkpoint": "checkpoints/snapshots/stage_d/recovery/quadro_stage_d_fchpa_recover_conservative_probe_19k_20260215_155748.pt",
+      "eval_json": "logs/stage_d/eval/eval_quadro_stage_d_fchpa_recover_conservative_probe_19k_screen_20260215_155748.json",
+      "default_mean_bb100": 930.198,
+      "default_ci95_lower_bb100": 809.4254457427086,
+      "robust_mean_bb100": 862.12,
+      "robust_ci95_lower_bb100": 628.290716063877,
+      "fold_freq": 0.4173682348779625,
+      "call_check_freq": 0.47605235231694376,
+      "half_pot_freq": 0.09575521754510082,
+      "allin_freq": 0.008631057658295012,
+      "preflop_entropy_bits": 1.4385302422439732,
+      "eligible": false,
+      "reasons": [
+        "envelope:fold>=min"
+      ]
+    }
+  ],
+  "thresholds": {
+    "min_ci_floor": 760.0,
+    "max_allin_freq": 0.03,
+    "min_call_check_freq": 0.47,
+    "min_half_pot_freq": 0.01,
+    "min_fold_freq": 0.42,
+    "max_fold_freq": 0.52,
+    "min_entropy_bits": 1.1,
+    "max_entropy_bits": 1.8
+  }
+}

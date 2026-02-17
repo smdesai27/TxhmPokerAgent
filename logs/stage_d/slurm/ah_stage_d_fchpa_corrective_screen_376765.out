@@ -1,0 +1,40 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 376765
+##  Job Name : ah_stage_d_fchpa_corrective_screen
+##  Nodelist : gpu2101
+##      CPUs : 1
+##  Mem/Node : 32768 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Sat Feb 14 11:34:24 PM EST 2026
+###############################################################################
+Job: ah_stage_d_fchpa_corrective_screen (376765)
+Node: gpu2101
+Date: Sat Feb 14 11:34:24 PM EST 2026
+Submit dir: /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+-------------------
+Running Stage D corrective SCREEN evaluation:
+  checkpoint=checkpoints/latest.pt
+  config=quadro_stage_d_fchpa_recover_diverse_corrective_17k
+  episodes_per_seed=5000
+  holdout_seed_base=91042
+  holdout_seed_count=5
+  output=logs/stage_d/eval/eval_quadro_stage_d_fchpa_recover_diverse_corrective_17k_screen_376765.json
+Optional module pokerkit_wrapper was not importable: No module named 'pokerkit'
+Evaluator device: cuda
+Running complete eval profile='standard' with 2 solver tier(s), seed base=42
+Random BB/100=867.530 | AlwaysCall BB/100=52.500
+Control baseline (0-iter MCCFR-ES): bb/100=399.475, build_s=0.000
+Tier 'default_cfr': baseline=mccfr_external_sampling, iters=5000, seeds=5, episodes/seed=5000
+  seed=42: bb/100=728.470, stderr=124.491, build_s=79.665
+  seed=43: bb/100=1003.590, stderr=123.841, build_s=79.288
+  seed=44: bb/100=930.020, stderr=120.865, build_s=79.310
+  seed=45: bb/100=1026.190, stderr=125.961, build_s=79.787
+  seed=46: bb/100=868.370, stderr=121.485, build_s=79.286
+  aggregate: mean=911.328, stderr=53.543, ci95=+/-104.945, lower=806.383, pass=True
+Tier 'robustness': baseline=mccfr_external_sampling, iters=10000, seeds=3, episodes/seed=5000
+  seed=42: bb/100=818.750, stderr=125.143, build_s=153.872
+  seed=43: bb/100=932.640, stderr=123.943, build_s=153.989
+  seed=44: bb/100=935.820, stderr=121.394, build_s=157.004
+  aggregate: mean=895.737, stderr=38.504, ci95=+/-75.468, lower=820.268, pass=True
+Overall gates: default_cfr=True, robustness=True, holdout=True, behavior=True, behavior_extended=False, verified=True, pass_all=True
+Wrote complete evaluation report: logs/stage_d/eval/eval_quadro_stage_d_fchpa_recover_diverse_corrective_17k_screen_376765.json

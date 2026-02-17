@@ -1,0 +1,24 @@
+{
+  "alias": "interview_ready_1",
+  "config_name": "quadro_stage_d_fchpa_evfirst_selected_21k_h1",
+  "created_at_utc": "2026-02-17T03:47:37.115570+00:00",
+  "gate_summary": {
+    "default_ci95_lower_bb100": 814.9547424208494,
+    "default_mean_bb100": 897.7,
+    "holdout_ci95_lower_bb100": 795.1825054340659,
+    "holdout_mean_bb100": 873.1229999999999,
+    "pass_aggression_gate": true,
+    "pass_all": true,
+    "pass_behavior_gate": true,
+    "pass_behavior_gate_extended": true,
+    "pass_default_cfr_gate": true,
+    "pass_holdout_gate": true,
+    "pass_robustness_gate": true,
+    "robust_ci95_lower_bb100": 879.137070645304,
+    "robust_mean_bb100": 934.2983333333333
+  },
+  "sha256": "a0dfc4b68a92a3d940e284a93fb6990ec0e7c01b3a0f027aa5c609d605d158c8",
+  "source_checkpoint": "checkpoints/snapshots/stage_d/recovery/selected_21k_auto_20260216_161321.pt",
+  "source_eval_cert": "logs/stage_d/eval/eval_selected_21k_auto_cert_20260216_161321.json",
+  "step": 21000
+}

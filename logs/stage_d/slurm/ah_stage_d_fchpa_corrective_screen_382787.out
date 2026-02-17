@@ -1,0 +1,40 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 382787
+##  Job Name : ah_stage_d_fchpa_corrective_screen
+##  Nodelist : gpu2264
+##      CPUs : 1
+##  Mem/Node : 32768 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Mon Feb 16 02:11:12 AM EST 2026
+###############################################################################
+Job: ah_stage_d_fchpa_corrective_screen (382787)
+Node: gpu2264
+Date: Mon Feb 16 02:11:12 AM EST 2026
+Submit dir: /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+-------------------
+Running Stage D corrective SCREEN evaluation:
+  checkpoint=checkpoints/snapshots/stage_d/recovery/quadro_stage_d_fchpa_recover_c2_halfpot_nudge_20k_20260215_230226.pt
+  config=quadro_stage_d_fchpa_recover_c2_halfpot_nudge_20k
+  episodes_per_seed=5000
+  holdout_seed_base=98142
+  holdout_seed_count=5
+  output=logs/stage_d/eval/eval_quadro_stage_d_fchpa_recover_c2_halfpot_nudge_20k_screen_20260215_230226.json
+Optional module pokerkit_wrapper was not importable: No module named 'pokerkit'
+Evaluator device: cuda
+Running complete eval profile='standard' with 2 solver tier(s), seed base=42
+Random BB/100=912.570 | AlwaysCall BB/100=468.400
+Control baseline (0-iter MCCFR-ES): bb/100=820.600, build_s=0.000
+Tier 'default_cfr': baseline=mccfr_external_sampling, iters=5000, seeds=5, episodes/seed=5000
+  seed=42: bb/100=987.540, stderr=123.626, build_s=79.748
+  seed=43: bb/100=862.480, stderr=127.338, build_s=79.326
+  seed=44: bb/100=871.730, stderr=124.344, build_s=78.961
+  seed=45: bb/100=904.380, stderr=125.388, build_s=79.837
+  seed=46: bb/100=799.580, stderr=123.236, build_s=79.362
+  aggregate: mean=885.142, stderr=30.716, ci95=+/-60.204, lower=824.938, pass=True
+Tier 'robustness': baseline=mccfr_external_sampling, iters=10000, seeds=3, episodes/seed=5000
+  seed=42: bb/100=888.500, stderr=128.531, build_s=153.719
+  seed=43: bb/100=950.670, stderr=127.896, build_s=153.995
+  seed=44: bb/100=984.940, stderr=124.690, build_s=156.988
+  aggregate: mean=941.370, stderr=28.225, ci95=+/-55.322, lower=886.048, pass=True
+Overall gates: default_cfr=True, robustness=True, holdout=True, behavior=True, behavior_extended=False, require_behavior_extended=True, verified=True, pass_all=False
+Wrote complete evaluation report: logs/stage_d/eval/eval_quadro_stage_d_fchpa_recover_c2_halfpot_nudge_20k_screen_20260215_230226.json

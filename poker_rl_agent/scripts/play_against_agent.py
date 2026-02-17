@@ -205,6 +205,69 @@ def _categorize_legal_actions(state, player_id: int):
     return buckets
 
 
+def _is_preflop_state(state) -> bool:
+    try:
+        return len(getattr(state.to_struct(), "board_cards", "")) == 0
+    except Exception:
+        return True
+
+
+def _bucket_action_for_abstraction(
+    abstraction: str,
+    action: int,
+    action_name: str,
+    fcpa_idx: int = None,
+) -> str:
+    abstraction = str(abstraction).lower()
+
+    # Adapter-mode index is the most reliable bucket for mapped fullgame actions.
+    if fcpa_idx is not None:
+        if fcpa_idx == 0:
+            return "fold"
+        if fcpa_idx == 1:
+            return "call_check"
+        if fcpa_idx == 2:
+            return "pot_raise"
+        if fcpa_idx == 3:
+            return "allin"
+        return "other"
+
+    if abstraction == "fcpa":
+        if action == 0:
+            return "fold"
+        if action == 1:
+            return "call_check"
+        if action == 2:
+            return "pot_raise"
+        if action == 3:
+            return "allin"
+        return "other"
+
+    if abstraction in {"fchpa", "fcpha"}:
+        if action == 0:
+            return "fold"
+        if action == 1:
+            return "call_check"
+        if action == 2:
+            return "half_pot"
+        if action == 3:
+            return "pot_raise"
+        if action == 4:
+            return "allin"
+        return "other"
+
+    lower = str(action_name).lower()
+    if "fold" in lower:
+        return "fold"
+    if "call" in lower or "check" in lower:
+        return "call_check"
+    if "all-in" in lower or "all in" in lower or "allin" in lower:
+        return "allin"
+    if "raise" in lower or "bet" in lower:
+        return "pot_raise"
+    return "other"
+
+
 def _map_fcpa_choice_to_fullgame(state, player_id: int, fcpa_idx: int) -> int:
     buckets = _categorize_legal_actions(state, player_id)
     legal = state.legal_actions()
@@ -356,6 +419,15 @@ def main():
     total_human = 0.0
     total_bot = 0.0
     played_hands = 0
+    bot_preflop_total = 0
+    bot_preflop_counts = {
+        "fold": 0,
+        "call_check": 0,
+        "half_pot": 0,
+        "pot_raise": 0,
+        "allin": 0,
+        "other": 0,
+    }
 
     print("AlphaHoldEm Heads-Up CLI")
     print(f"Checkpoint: {args.checkpoint}")
@@ -420,6 +492,15 @@ def main():
                         policy_temperature=args.policy_temperature,
                     )
                 action_name = _safe_action_name(state, bot_seat, action)
+                if _is_preflop_state(state):
+                    bucket = _bucket_action_for_abstraction(
+                        abstraction=betting_abstraction,
+                        action=action,
+                        action_name=action_name,
+                        fcpa_idx=fcpa_idx,
+                    )
+                    bot_preflop_total += 1
+                    bot_preflop_counts[bucket] = int(bot_preflop_counts.get(bucket, 0)) + 1
                 if fcpa_idx is None:
                     print(f"Bot action: {action} ({action_name})")
                 else:
@@ -473,6 +554,12 @@ def main():
             total_bot / bb_size if bb_size > 0 else 0.0,
         )
     )
+    if bot_preflop_total > 0:
+        print("Bot preflop action distribution:")
+        for key in ["fold", "call_check", "half_pot", "pot_raise", "allin", "other"]:
+            value = int(bot_preflop_counts.get(key, 0))
+            freq = float(value) / float(bot_preflop_total)
+            print(f"  {key}: {value}/{bot_preflop_total} ({freq:.4f})")
 
 
 if __name__ == "__main__":

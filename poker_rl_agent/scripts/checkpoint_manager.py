@@ -31,7 +31,11 @@ def _sha256(path: Path) -> str:
 
 def _classify(root: Path, path: Path) -> str:
     rel = path.relative_to(root)
-    if rel.parent == Path(".") and (path.name in ACTIVE_NAMES or path.name.startswith("best_eval")):
+    if rel.parent == Path(".") and (
+        path.name in ACTIVE_NAMES
+        or path.name.startswith("best_eval")
+        or path.name.endswith("_latest.pt")
+    ):
         return "active"
     if "snapshots" in rel.parts:
         return "snapshot"
@@ -91,7 +95,7 @@ def organize(root: Path, dry_run: bool = True) -> OpResult:
     manual_dir.mkdir(parents=True, exist_ok=True)
 
     for path in sorted(root.glob("*.pt")):
-        if path.name in ACTIVE_NAMES or path.name.startswith("best_eval"):
+        if path.name in ACTIVE_NAMES or path.name.startswith("best_eval") or path.name.endswith("_latest.pt"):
             continue
         target = _resolve_conflict(manual_dir / path.name, path)
         if target == manual_dir / path.name and target.exists() and _sha256(target) == _sha256(path):

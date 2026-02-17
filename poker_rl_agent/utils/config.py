@@ -64,6 +64,7 @@ class Config:
     VALUE_TARGET_SCALE: float = 20.0
     EXPLAINED_VAR_VAR_FLOOR: float = 1e-4
     SKIP_NONFINITE_GRAD: bool = True
+    SCHEDULE_RELATIVE_TO_RESUME: bool = True
     MIN_ROLLOUT_TRANSITIONS: int = 64
     SELF_PLAY_TEMPERATURE_START: float = 1.20
     SELF_PLAY_TEMPERATURE_END: float = 1.00
@@ -72,6 +73,17 @@ class Config:
     PPO_ENTROPY_COEF_END: float = 0.003
     PPO_ENTROPY_DECAY_FRAC: float = 0.70
     LEAGUE_RANDOM_OPPONENT_PROB: float = 0.20
+    LEAGUE_OPPONENT_PROB: float = 0.0
+    RANDOM_OPPONENT_PROB: float = 0.0
+    EXPLOIT_OPPONENT_PROB: float = 0.0
+    EXPLOIT_OPPONENT_SET: str = "always_call,pot_pressure,sticky_call"
+    STYLE_TARGET_PROFILE_PATH: str = ""
+    STYLE_TARGET_USE_SOLVER_PROFILE: bool = True
+    STYLE_REG_ENABLE: bool = False
+    STYLE_REG_COEF_START: float = 0.0
+    STYLE_REG_COEF_END: float = 0.0
+    STYLE_REG_DECAY_FRAC: float = 0.60
+    STYLE_POT_HINGE_COEF: float = 0.50
 
     # K-best league self-play
     K_BEST: int = 8
@@ -99,14 +111,29 @@ class Config:
     EVAL_BASELINE_CACHE_MODE: str = "process"  # process | none
     EVAL_BASELINE_LABEL: str = "MCCFR-ES"
     EVAL_CFR_ITERATIONS: int = 5000  # compatibility alias; synced to EVAL_BASELINE_ITERS
+    EVAL_REQUIRE_BEHAVIOR_EXTENDED: bool = True
+    EVAL_AGGRESSION_GATE_ENABLE: bool = True
+    EVAL_MIN_PRE_FLOP_RAISE_TOTAL_FREQ: float = 0.08
+    EVAL_ENVELOPE_ENABLE: bool = False
+    EVAL_MIN_PRE_FLOP_FOLD_FREQ: float = 0.35
+    EVAL_MAX_PRE_FLOP_FOLD_FREQ: float = 0.55
+    EVAL_MIN_PRE_FLOP_CALL_CHECK_FREQ: float = 0.40
+    EVAL_MAX_PRE_FLOP_ALLIN_FREQ: float = 0.05
+    EVAL_MIN_PRE_FLOP_ENTROPY_BITS: float = 1.10
+    EVAL_MAX_PRE_FLOP_ENTROPY_BITS: float = 1.80
+    EVAL_POT_MIX_GATE_ENABLE: bool = True
+    EVAL_POT_MIX_MIN_ABS: float = 0.01
+    EVAL_POT_MIX_TARGET_FRACTION: float = 0.60
+    EVAL_EXPLOIT_WEIGHT: float = 0.20
+    EVAL_EXPLOIT_CLIP_BB100: float = 500.0
     EVAL_ENABLE_RANDOM: bool = True
     EVAL_ENABLE_CFR: bool = False  # compatibility flag for solver baseline eval
     EVAL_ENABLE_NASH_CONV: bool = False
     BEHAVIOR_GATE_ENABLE: bool = True
     BEHAVIOR_GATE_MAX_FOLD_FREQ: float = 0.78
-    BEHAVIOR_GATE_MAX_ALLIN_FREQ: float = 0.06
+    BEHAVIOR_GATE_MAX_ALLIN_FREQ: float = 0.03
     BEHAVIOR_GATE_MIN_PRE_FLOP_ENTROPY_BITS: float = 0.75
-    BEHAVIOR_GATE_MIN_CALL_CHECK_FREQ: float = 0.50
+    BEHAVIOR_GATE_MIN_CALL_CHECK_FREQ: float = 0.47
     BEHAVIOR_GATE_MIN_HALF_POT_FREQ: float = 0.01
     BB_SIZE: float = 100.0
 

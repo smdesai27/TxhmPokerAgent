@@ -1,0 +1,40 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 391059
+##  Job Name : ah_stage_d_fchpa_corrective_screen
+##  Nodelist : gpu2111
+##      CPUs : 1
+##  Mem/Node : 32768 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Mon Feb 16 08:49:58 PM EST 2026
+###############################################################################
+Job: ah_stage_d_fchpa_corrective_screen (391059)
+Node: gpu2111
+Date: Mon Feb 16 08:49:58 PM EST 2026
+Submit dir: /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+-------------------
+Running Stage D corrective SCREEN evaluation:
+  checkpoint=checkpoints/snapshots/stage_d/recovery/selected_21k_auto_20260216_161321.pt
+  config=quadro_stage_d_fchpa_evfirst_selected_21k_h1
+  episodes_per_seed=5000
+  holdout_seed_base=99142
+  holdout_seed_count=5
+  output=logs/stage_d/eval/eval_selected_21k_auto_screen_20260216_161321.json
+Optional module pokerkit_wrapper was not importable: No module named 'pokerkit'
+Evaluator device: cuda
+Running complete eval profile='standard' with 2 solver tier(s), seed base=42
+Random BB/100=829.220 | AlwaysCall BB/100=542.180 | PotPressure BB/100=1347.100
+Control baseline (0-iter MCCFR-ES): bb/100=970.525, build_s=0.000
+Tier 'default_cfr': baseline=mccfr_external_sampling, iters=5000, seeds=5, episodes/seed=5000
+  seed=42: bb/100=1012.530, stderr=128.376, build_s=79.370
+  seed=43: bb/100=804.730, stderr=126.999, build_s=78.830
+  seed=44: bb/100=828.870, stderr=127.758, build_s=78.738
+  seed=45: bb/100=952.930, stderr=130.198, build_s=79.608
+  seed=46: bb/100=922.850, stderr=125.408, build_s=78.987
+  aggregate: mean=904.382, stderr=38.747, ci95=+/-75.944, lower=828.438, pass=True
+Tier 'robustness': baseline=mccfr_external_sampling, iters=10000, seeds=3, episodes/seed=5000
+  seed=42: bb/100=728.970, stderr=129.316, build_s=153.298
+  seed=43: bb/100=919.420, stderr=129.838, build_s=153.447
+  seed=44: bb/100=806.650, stderr=129.186, build_s=156.162
+  aggregate: mean=818.347, stderr=55.288, ci95=+/-108.365, lower=709.981, pass=True
+Overall gates: default_cfr=True, robustness=True, holdout=True, behavior=True, behavior_extended=True, aggression=True, envelope=True, require_behavior_extended=True, verified=True, pass_all=True
+Wrote complete evaluation report: logs/stage_d/eval/eval_selected_21k_auto_screen_20260216_161321.json

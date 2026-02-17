@@ -1,3 +1,4 @@
+import json
 import os
 import random
 from datetime import datetime
@@ -11,7 +12,13 @@ from torch.distributions import Categorical
 
 from ..algorithms.self_play import SelfPlayWorker
 from ..environment.openspiel_wrapper import PokerEnv
-from ..evaluation.baseline_agents import RandomAgent
+from ..evaluation.baseline_agents import (
+    AlwaysCallAgent,
+    PassiveCallerAgent,
+    PotPressureAgent,
+    RandomAgent,
+    StickyCallAgent,
+)
 from ..evaluation.evaluator import Evaluator
 from ..models.alpha_holdem_net import AlphaHoldemNetwork
 from ..models.model_utils import masked_logits
@@ -96,6 +103,8 @@ class Trainer:
         )
         self.league.add_snapshot(self.model, step=0, score=0.0)
         self._opponent_cache = {}
+        self._exploit_agents = self._build_exploit_agents()
+        self._style_target = self._load_style_target_profile()
 
         self.evaluator = Evaluator(self.model, self.config, device=self.device)
         self.global_step = 0
@@ -117,6 +126,17 @@ class Trainer:
         ratio = min(clamped_progress / decay, 1.0)
         return float(start + (end - start) * ratio)
 
+    def _effective_schedule_progress(self, iteration: int, start_step: int) -> float:
+        """Returns the progress signal used for exploration schedules.
+
+        By default this is relative to the continuation window (resume -> target),
+        so resumed runs can still apply start/end schedules meaningfully.
+        """
+        if bool(getattr(self.config, "SCHEDULE_RELATIVE_TO_RESUME", True)):
+            total_span = max(1, int(self.config.CFR_ITERATIONS) - int(start_step))
+            return float(iteration + 1 - int(start_step)) / float(total_span)
+        return float(iteration + 1) / float(max(1, int(self.config.CFR_ITERATIONS)))
+
     def _policy_temperature(self, progress: float) -> float:
         start = float(getattr(self.config, "SELF_PLAY_TEMPERATURE_START", 1.0))
         end = float(getattr(self.config, "SELF_PLAY_TEMPERATURE_END", 1.0))
@@ -129,13 +149,141 @@ class Trainer:
         decay = float(getattr(self.config, "PPO_ENTROPY_DECAY_FRAC", 1.0))
         return max(0.0, self._linear_schedule(start, end, progress, decay))
 
-    def _bucket_indices(self):
+    def _style_reg_coef(self, progress: float) -> float:
+        if not bool(getattr(self.config, "STYLE_REG_ENABLE", False)):
+            return 0.0
+        start = float(getattr(self.config, "STYLE_REG_COEF_START", 0.0))
+        end = float(getattr(self.config, "STYLE_REG_COEF_END", 0.0))
+        decay = float(getattr(self.config, "STYLE_REG_DECAY_FRAC", 1.0))
+        return max(0.0, self._linear_schedule(start, end, progress, decay))
+
+    def _resolve_opponent_mix(self):
+        """Resolves league/random/exploit ratios with backwards-compatible fallback."""
+        league_prob = float(getattr(self.config, "LEAGUE_OPPONENT_PROB", 0.0))
+        random_prob = float(getattr(self.config, "RANDOM_OPPONENT_PROB", 0.0))
+        exploit_prob = float(getattr(self.config, "EXPLOIT_OPPONENT_PROB", 0.0))
+
+        if league_prob <= 0.0 and random_prob <= 0.0 and exploit_prob <= 0.0:
+            random_prob = float(getattr(self.config, "LEAGUE_RANDOM_OPPONENT_PROB", 0.0))
+            random_prob = min(max(random_prob, 0.0), 1.0)
+            league_prob = 1.0 - random_prob
+            exploit_prob = 0.0
+
+        probs = np.array([league_prob, exploit_prob, random_prob], dtype=np.float64)
+        probs = np.clip(probs, 0.0, None)
+        total = float(probs.sum())
+        if total <= 0.0:
+            probs = np.array([1.0, 0.0, 0.0], dtype=np.float64)
+            total = 1.0
+        probs /= total
+        return {
+            "league": float(probs[0]),
+            "exploit": float(probs[1]),
+            "random": float(probs[2]),
+        }
+
+    @staticmethod
+    def _agent_from_name(name: str):
+        normalized = str(name).strip().lower()
+        if normalized in {"always_call", "alwayscall"}:
+            return AlwaysCallAgent()
+        if normalized in {"pot_pressure", "potpressure"}:
+            return PotPressureAgent()
+        if normalized in {"sticky_call", "stickycall"}:
+            return StickyCallAgent()
+        if normalized in {"passive_caller", "passivecaller"}:
+            return PassiveCallerAgent()
+        if normalized in {"random", "rand"}:
+            return RandomAgent()
+        return None
+
+    def _build_exploit_agents(self):
+        raw = str(getattr(self.config, "EXPLOIT_OPPONENT_SET", "always_call"))
+        names = [tok.strip() for tok in raw.split(",") if tok.strip()]
+        agents = []
+        for name in names:
+            agent = self._agent_from_name(name)
+            if agent is not None:
+                agents.append(agent)
+        if not agents:
+            agents.append(AlwaysCallAgent())
+        return agents
+
+    def _load_style_target_profile(self):
+        if not bool(getattr(self.config, "STYLE_REG_ENABLE", False)):
+            return None
+        if not bool(getattr(self.config, "STYLE_TARGET_USE_SOLVER_PROFILE", True)):
+            return None
+        path = str(getattr(self.config, "STYLE_TARGET_PROFILE_PATH", "")).strip()
+        if not path:
+            return None
+        if not os.path.exists(path):
+            print(f"Style target profile not found, disabling style regularizer: {path}", flush=True)
+            return None
+
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                payload = json.load(fh)
+        except Exception as exc:
+            print(f"Failed loading style target profile '{path}': {exc}", flush=True)
+            return None
+
+        target = payload.get("target", {})
+        if not isinstance(target, dict):
+            target = {}
+        keys = ["fold", "call_check", "half_pot", "pot_raise", "allin"]
+        values = np.array([float(target.get(k, 0.0)) for k in keys], dtype=np.float64)
+        values = np.clip(values, 0.0, None)
+        if values.sum() <= 0.0:
+            print(f"Style target profile has empty target distribution, disabling: {path}", flush=True)
+            return None
+        values = values / values.sum()
+
+        target_pot_given_legal = float(
+            payload.get(
+                "target/preflop_choose_given_legal/pot_raise",
+                payload.get("diagnostics/preflop_choose_given_legal/pot_raise", 0.0),
+            )
+        )
+        target_half_given_legal = float(
+            payload.get(
+                "target/preflop_choose_given_legal/half_pot",
+                payload.get("diagnostics/preflop_choose_given_legal/half_pot", 0.0),
+            )
+        )
+
+        return {
+            "path": path,
+            "target_dist": values.astype(np.float32),
+            "target_pot_given_legal": max(0.0, target_pot_given_legal),
+            "target_half_given_legal": max(0.0, target_half_given_legal),
+        }
+
+    def _preflop_bucket_indices(self):
         abstraction = str(getattr(self.config, "BETTING_ABSTRACTION", "fcpa")).lower()
         if abstraction in {"fchpa", "fcpha"}:
-            return 0, 4
+            return {
+                "fold": 0,
+                "call_check": 1,
+                "half_pot": 2,
+                "pot_raise": 3,
+                "allin": 4,
+            }
         if abstraction == "fcpa":
-            return 0, 3
-        return None, None
+            return {
+                "fold": 0,
+                "call_check": 1,
+                "half_pot": None,
+                "pot_raise": 2,
+                "allin": 3,
+            }
+        return {
+            "fold": None,
+            "call_check": None,
+            "half_pot": None,
+            "pot_raise": None,
+            "allin": None,
+        }
 
     def _apply_lr_multiplier(self):
         lr = self._base_lr * self._lr_multiplier
@@ -187,6 +335,89 @@ class Trainer:
             return advantages
         return torch.clamp(advantages, min=-adv_clip, max=adv_clip)
 
+    def _compute_style_regularizer(
+        self,
+        probs: torch.Tensor,
+        legal_mask: torch.Tensor,
+        scalars: torch.Tensor,
+    ):
+        if not bool(getattr(self.config, "STYLE_REG_ENABLE", False)):
+            zero = probs.new_zeros(())
+            return zero, zero, zero
+        if self._style_target is None:
+            zero = probs.new_zeros(())
+            return zero, zero, zero
+
+        abstraction = str(getattr(self.config, "BETTING_ABSTRACTION", "fcpa")).lower()
+        if abstraction not in {"fchpa", "fcpha"}:
+            zero = probs.new_zeros(())
+            return zero, zero, zero
+
+        if scalars.dim() != 2 or scalars.shape[1] < 9:
+            zero = probs.new_zeros(())
+            return zero, zero, zero
+
+        preflop_mask = scalars[:, 5] > 0.5
+        if not bool(preflop_mask.any().item()):
+            zero = probs.new_zeros(())
+            return zero, zero, zero
+
+        preflop_probs = probs[preflop_mask]
+        preflop_legal = legal_mask[preflop_mask]
+        preflop_fraction = preflop_probs.shape[0] / max(1, probs.shape[0])
+
+        bucket_idx = self._preflop_bucket_indices()
+        ordered = [
+            bucket_idx["fold"],
+            bucket_idx["call_check"],
+            bucket_idx["half_pot"],
+            bucket_idx["pot_raise"],
+            bucket_idx["allin"],
+        ]
+        bucket_probs = []
+        for idx in ordered:
+            if idx is None or idx >= preflop_probs.shape[1]:
+                bucket_probs.append(preflop_probs.new_zeros((preflop_probs.shape[0],)))
+            else:
+                bucket_probs.append(preflop_probs[:, idx])
+        pred_dist = torch.stack(bucket_probs, dim=1).mean(dim=0)
+        pred_dist = pred_dist / torch.clamp(pred_dist.sum(), min=1e-8)
+        pred_dist = torch.clamp(pred_dist, min=1e-8, max=1.0)
+
+        target_dist = torch.as_tensor(
+            self._style_target["target_dist"],
+            device=pred_dist.device,
+            dtype=pred_dist.dtype,
+        )
+        target_dist = target_dist / torch.clamp(target_dist.sum(), min=1e-8)
+        target_dist = torch.clamp(target_dist, min=1e-8, max=1.0)
+
+        style_kl = torch.sum(target_dist * (torch.log(target_dist) - torch.log(pred_dist)))
+
+        pot_idx = bucket_idx["pot_raise"]
+        half_idx = bucket_idx["half_pot"]
+        pot_prob_given_legal = pred_dist.new_zeros(())
+        half_prob_given_legal = pred_dist.new_zeros(())
+
+        if pot_idx is not None and pot_idx < preflop_probs.shape[1]:
+            pot_legal = preflop_legal[:, pot_idx] > 0.5
+            if bool(pot_legal.any().item()):
+                pot_prob_given_legal = preflop_probs[pot_legal, pot_idx].mean()
+        if half_idx is not None and half_idx < preflop_probs.shape[1]:
+            half_legal = preflop_legal[:, half_idx] > 0.5
+            if bool(half_legal.any().item()):
+                half_prob_given_legal = preflop_probs[half_legal, half_idx].mean()
+
+        target_pot = float(self._style_target.get("target_pot_given_legal", 0.0))
+        target_half = float(self._style_target.get("target_half_given_legal", 0.0))
+        hinge_coef = max(float(getattr(self.config, "STYLE_POT_HINGE_COEF", 0.5)), 0.0)
+
+        pot_hinge = torch.relu(probs.new_tensor(target_pot) - pot_prob_given_legal)
+        half_hinge = torch.relu(probs.new_tensor(target_half) - half_prob_given_legal)
+        style_hinge = pot_hinge + (0.5 * half_hinge)
+
+        return style_kl, (hinge_coef * style_hinge), probs.new_tensor(float(preflop_fraction))
+
     def _compute_explained_var(self, value_pred: torch.Tensor, scaled_returns: torch.Tensor):
         var_floor = max(float(getattr(self.config, "EXPLAINED_VAR_VAR_FLOOR", 1e-4)), 0.0)
         var_y = torch.var(scaled_returns, unbiased=False)
@@ -218,29 +449,51 @@ class Trainer:
         target_episodes = max(1, int(self.config.ROLLOUT_EPISODES))
         max_episodes = max(target_episodes, min_transitions * 4)
         episodes_collected = 0
-        random_opp_prob = min(max(float(getattr(self.config, "LEAGUE_RANDOM_OPPONENT_PROB", 0.0)), 0.0), 1.0)
+        mix = self._resolve_opponent_mix()
         random_opponent_episodes = 0
+        exploit_opponent_episodes = 0
+        league_opponent_episodes = 0
 
         preflop_total = 0
         preflop_fold = 0
+        preflop_call_check = 0
+        preflop_half_pot = 0
+        preflop_pot_raise = 0
         preflop_allin = 0
+        preflop_legal_pot_raise = 0
+        preflop_legal_half_pot = 0
+        preflop_choose_pot_raise_when_legal = 0
+        preflop_choose_half_pot_when_legal = 0
         preflop_action_counts = {}
-        fold_idx, allin_idx = self._bucket_indices()
+        bucket_idx = self._preflop_bucket_indices()
+        fold_idx = bucket_idx["fold"]
+        call_check_idx = bucket_idx["call_check"]
+        half_pot_idx = bucket_idx["half_pot"]
+        pot_raise_idx = bucket_idx["pot_raise"]
+        allin_idx = bucket_idx["allin"]
 
         self.model.eval()
         while episodes_collected < target_episodes or (
             len(self.rollout_buffer) < min_transitions and episodes_collected < max_episodes
         ):
-            use_random_opponent = random.random() < random_opp_prob
+            sampled = random.random()
+            use_random_opponent = sampled < mix["random"]
+            use_exploit_opponent = (sampled >= mix["random"]) and (
+                sampled < (mix["random"] + mix["exploit"])
+            )
             opponent_entry = None
             opponent_model = None
             opponent_agent = None
             if use_random_opponent:
                 opponent_agent = RandomAgent()
                 random_opponent_episodes += 1
+            elif use_exploit_opponent:
+                opponent_agent = random.choice(self._exploit_agents)
+                exploit_opponent_episodes += 1
             else:
                 opponent_entry = self.league.sample_opponent()
                 opponent_model = self.model if opponent_entry is None else self._get_opponent_model(opponent_entry)
+                league_opponent_episodes += 1
 
             episode_transitions, final_return, _ = self.worker.generate_episode(
                 policy_model=self.model,
@@ -268,12 +521,37 @@ class Trainer:
                     is_preflop = bool(float(scalars[5].item()) > 0.5)
                 if is_preflop:
                     action = int(transition["action"])
+                    legal_mask = transition["state"].get("legal_action_mask")
                     preflop_total += 1
                     preflop_action_counts[action] = int(preflop_action_counts.get(action, 0)) + 1
                     if fold_idx is not None and action == fold_idx:
                         preflop_fold += 1
+                    if call_check_idx is not None and action == call_check_idx:
+                        preflop_call_check += 1
+                    if half_pot_idx is not None and action == half_pot_idx:
+                        preflop_half_pot += 1
+                    if pot_raise_idx is not None and action == pot_raise_idx:
+                        preflop_pot_raise += 1
                     if allin_idx is not None and action == allin_idx:
                         preflop_allin += 1
+                    if (
+                        torch.is_tensor(legal_mask)
+                        and pot_raise_idx is not None
+                        and 0 <= int(pot_raise_idx) < int(legal_mask.shape[0])
+                        and float(legal_mask[int(pot_raise_idx)].item()) > 0.5
+                    ):
+                        preflop_legal_pot_raise += 1
+                        if action == pot_raise_idx:
+                            preflop_choose_pot_raise_when_legal += 1
+                    if (
+                        torch.is_tensor(legal_mask)
+                        and half_pot_idx is not None
+                        and 0 <= int(half_pot_idx) < int(legal_mask.shape[0])
+                        and float(legal_mask[int(half_pot_idx)].item()) > 0.5
+                    ):
+                        preflop_legal_half_pot += 1
+                        if action == half_pot_idx:
+                            preflop_choose_half_pot_when_legal += 1
 
             returns.append(final_return)
 
@@ -293,12 +571,28 @@ class Trainer:
             probs = [count / float(preflop_total) for count in preflop_action_counts.values()]
             preflop_entropy_bits = float(-sum(p * np.log2(max(p, 1e-12)) for p in probs if p > 0.0))
             preflop_fold_freq = float(preflop_fold) / float(preflop_total)
+            preflop_call_check_freq = float(preflop_call_check) / float(preflop_total)
+            preflop_half_pot_freq = float(preflop_half_pot) / float(preflop_total)
+            preflop_pot_raise_freq = float(preflop_pot_raise) / float(preflop_total)
             preflop_allin_freq = float(preflop_allin) / float(preflop_total)
         else:
             preflop_entropy_bits = 0.0
             preflop_fold_freq = 0.0
+            preflop_call_check_freq = 0.0
+            preflop_half_pot_freq = 0.0
+            preflop_pot_raise_freq = 0.0
             preflop_allin_freq = 0.0
         random_ratio = float(random_opponent_episodes) / float(max(1, episodes_collected))
+        exploit_ratio = float(exploit_opponent_episodes) / float(max(1, episodes_collected))
+        league_ratio = float(league_opponent_episodes) / float(max(1, episodes_collected))
+        preflop_pot_legal_rate = float(preflop_legal_pot_raise) / float(max(1, preflop_total))
+        preflop_half_legal_rate = float(preflop_legal_half_pot) / float(max(1, preflop_total))
+        preflop_choose_pot_given_legal = float(preflop_choose_pot_raise_when_legal) / float(
+            max(1, preflop_legal_pot_raise)
+        )
+        preflop_choose_half_given_legal = float(preflop_choose_half_pot_when_legal) / float(
+            max(1, preflop_legal_half_pot)
+        )
 
         if self.curriculum is not None:
             curriculum_meta = self.curriculum.phase_metadata(progress)
@@ -315,10 +609,22 @@ class Trainer:
             "rollout/transitions": len(self.rollout_buffer),
             "rollout/min_target_transitions": min_transitions,
             "league/current_elo": self.league.current_rating,
+            "league/target_opponent_ratio_league": float(mix["league"]),
+            "league/target_opponent_ratio_exploit": float(mix["exploit"]),
+            "league/target_opponent_ratio_random": float(mix["random"]),
             "league/random_opponent_ratio_observed": random_ratio,
+            "league/exploit_opponent_ratio_observed": exploit_ratio,
+            "league/league_opponent_ratio_observed": league_ratio,
             "train/policy_temperature": float(policy_temperature),
             "train/preflop_action_entropy_bits": preflop_entropy_bits,
             "train/preflop_fold_freq": preflop_fold_freq,
+            "train/preflop_call_check_freq": preflop_call_check_freq,
+            "train/preflop_half_pot_freq": preflop_half_pot_freq,
+            "train/preflop_pot_raise_freq": preflop_pot_raise_freq,
+            "train/preflop_legal_rate/pot_raise": preflop_pot_legal_rate,
+            "train/preflop_legal_rate/half_pot": preflop_half_legal_rate,
+            "train/preflop_choose_given_legal/pot_raise": preflop_choose_pot_given_legal,
+            "train/preflop_choose_given_legal/half_pot": preflop_choose_half_given_legal,
             "train/preflop_allin_freq": preflop_allin_freq,
             **curriculum_meta,
         }
@@ -326,7 +632,7 @@ class Trainer:
     def _to_device(self, batch_states: Dict[str, torch.Tensor]):
         return {k: v.to(self.device) for k, v in batch_states.items()}
 
-    def _ppo_update(self, entropy_coef: float = None):
+    def _ppo_update(self, entropy_coef: float = None, style_coef: float = None):
         if len(self.rollout_buffer) == 0:
             return {
                 "train/updates": 0,
@@ -343,6 +649,13 @@ class Trainer:
                 "train/entropy_coef_effective": float(
                     self.config.PPO_ENTROPY_COEF if entropy_coef is None else entropy_coef
                 ),
+                "train/style_coef_effective": float(
+                    0.0 if style_coef is None else style_coef
+                ),
+                "train/style_kl": 0.0,
+                "train/style_hinge": 0.0,
+                "train/style_loss": 0.0,
+                "train/style_preflop_fraction": 0.0,
             }
 
         self.model.train()
@@ -359,6 +672,9 @@ class Trainer:
         entropy_coef_effective = float(
             self.config.PPO_ENTROPY_COEF if entropy_coef is None else entropy_coef
         )
+        style_coef_effective = float(
+            self._style_reg_coef(1.0) if style_coef is None else style_coef
+        )
         skip_nonfinite_grad = bool(getattr(self.config, "SKIP_NONFINITE_GRAD", True))
         kl_spike_threshold = max(float(self.config.PPO_TARGET_KL), 1e-8) * max(
             float(getattr(self.config, "PPO_ADAPTIVE_KL_HIGH", 2.0)),
@@ -374,6 +690,10 @@ class Trainer:
         total_explained_var_raw = 0.0
         total_value_target_var = 0.0
         total_grad_norm = 0.0
+        total_style_kl = 0.0
+        total_style_hinge = 0.0
+        total_style_loss = 0.0
+        total_style_preflop_fraction = 0.0
         minibatch_count = 0
         explained_var_valid_count = 0
         kl_spike_events = 0
@@ -424,9 +744,17 @@ class Trainer:
                     else:
                         value_loss = F.huber_loss(value_pred, scaled_returns, delta=huber_delta)
 
+                    style_kl, style_hinge, style_preflop_fraction = self._compute_style_regularizer(
+                        probs=dist.probs,
+                        legal_mask=states["legal_action_mask"],
+                        scalars=states["scalars"],
+                    )
+                    style_loss = style_kl + style_hinge
+
                     loss = (
                         policy_loss
                         + self.config.PPO_VALUE_COEF * value_loss
+                        + style_coef_effective * style_loss
                         - entropy_coef_effective * entropy
                     ) / grad_accum
 
@@ -456,6 +784,10 @@ class Trainer:
                 total_policy_loss += float(policy_loss.item())
                 total_value_loss += float(value_loss.item())
                 total_entropy += float(entropy.item())
+                total_style_kl += float(style_kl.item())
+                total_style_hinge += float(style_hinge.item())
+                total_style_loss += float(style_loss.item())
+                total_style_preflop_fraction += float(style_preflop_fraction.item())
                 total_kl += float(approx_kl)
                 total_clipfrac += float(clipfrac.item())
                 total_explained_var += explained_var
@@ -546,6 +878,11 @@ class Trainer:
             "train/nonfinite_grad_skips": int(nonfinite_grad_skips),
             "train/nonfinite_loss_batches": int(nonfinite_loss_batches),
             "train/entropy_coef_effective": entropy_coef_effective,
+            "train/style_coef_effective": style_coef_effective,
+            "train/style_kl": total_style_kl / denom,
+            "train/style_hinge": total_style_hinge / denom,
+            "train/style_loss": total_style_loss / denom,
+            "train/style_preflop_fraction": total_style_preflop_fraction / denom,
             **adaptive_metrics,
         }
 
@@ -711,6 +1048,7 @@ class Trainer:
             "meta/strict_abstraction": float(bool(getattr(self.config, "STRICT_ABSTRACTION", True))),
             "meta/seed": int(getattr(self.config, "SEED", 0)),
             "meta/resume_step": int(start_step),
+            "meta/style_target_loaded": float(self._style_target is not None),
         }
         print(
             f"Starting training: start_step={start_step}, "
@@ -722,12 +1060,15 @@ class Trainer:
 
         for iteration in range(start_step, self.config.CFR_ITERATIONS):
             progress = float(iteration + 1) / float(max(1, int(self.config.CFR_ITERATIONS)))
-            policy_temperature = self._policy_temperature(progress)
-            entropy_coef = self._entropy_coef(progress)
+            schedule_progress = self._effective_schedule_progress(iteration, start_step)
+            policy_temperature = self._policy_temperature(schedule_progress)
+            entropy_coef = self._entropy_coef(schedule_progress)
+            style_coef = self._style_reg_coef(schedule_progress)
             metrics = {
                 "iteration": iteration + 1,
                 "lr": self.optimizer.param_groups[0]["lr"],
                 "run_id": self.run_id,
+                "train/schedule_progress": float(min(max(schedule_progress, 0.0), 1.0)),
                 **static_metadata,
             }
 
@@ -737,7 +1078,7 @@ class Trainer:
             )
             metrics.update(rollout_metrics)
 
-            update_metrics = self._ppo_update(entropy_coef=entropy_coef)
+            update_metrics = self._ppo_update(entropy_coef=entropy_coef, style_coef=style_coef)
             metrics.update(update_metrics)
 
             if (iteration + 1) % self.config.SNAPSHOT_INTERVAL == 0:

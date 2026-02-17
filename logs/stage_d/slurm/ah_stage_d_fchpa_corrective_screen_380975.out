@@ -1,0 +1,40 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 380975
+##  Job Name : ah_stage_d_fchpa_corrective_screen
+##  Nodelist : gpu2101
+##      CPUs : 1
+##  Mem/Node : 32768 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Sun Feb 15 12:43:41 PM EST 2026
+###############################################################################
+Job: ah_stage_d_fchpa_corrective_screen (380975)
+Node: gpu2101
+Date: Sun Feb 15 12:43:41 PM EST 2026
+Submit dir: /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+-------------------
+Running Stage D corrective SCREEN evaluation:
+  checkpoint=checkpoints/latest.pt
+  config=quadro_stage_d_fchpa_recover_value_stable_corrective_18k
+  episodes_per_seed=5000
+  holdout_seed_base=93042
+  holdout_seed_count=5
+  output=logs/stage_d/eval/eval_quadro_stage_d_fchpa_recover_value_stable_corrective_18k_screen_20260215_124339.json
+Optional module pokerkit_wrapper was not importable: No module named 'pokerkit'
+Evaluator device: cuda
+Running complete eval profile='standard' with 2 solver tier(s), seed base=42
+Random BB/100=705.660 | AlwaysCall BB/100=40.680
+Control baseline (0-iter MCCFR-ES): bb/100=563.725, build_s=0.000
+Tier 'default_cfr': baseline=mccfr_external_sampling, iters=5000, seeds=5, episodes/seed=5000
+  seed=42: bb/100=759.280, stderr=114.671, build_s=78.855
+  seed=43: bb/100=1029.130, stderr=115.436, build_s=78.424
+  seed=44: bb/100=1007.970, stderr=112.198, build_s=78.535
+  seed=45: bb/100=826.120, stderr=115.603, build_s=79.370
+  seed=46: bb/100=751.760, stderr=112.638, build_s=78.984
+  aggregate: mean=874.852, stderr=60.169, ci95=+/-117.931, lower=756.921, pass=True
+Tier 'robustness': baseline=mccfr_external_sampling, iters=10000, seeds=3, episodes/seed=5000
+  seed=42: bb/100=821.780, stderr=113.344, build_s=153.415
+  seed=43: bb/100=659.870, stderr=115.881, build_s=152.275
+  seed=44: bb/100=900.300, stderr=112.230, build_s=158.498
+  aggregate: mean=793.983, stderr=70.784, ci95=+/-138.737, lower=655.247, pass=True
+Overall gates: default_cfr=True, robustness=True, holdout=True, behavior=True, behavior_extended=False, verified=True, pass_all=True
+Wrote complete evaluation report: logs/stage_d/eval/eval_quadro_stage_d_fchpa_recover_value_stable_corrective_18k_screen_20260215_124339.json

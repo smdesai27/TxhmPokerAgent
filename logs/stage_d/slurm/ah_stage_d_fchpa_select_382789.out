@@ -1,0 +1,17 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 382789
+##  Job Name : ah_stage_d_fchpa_select
+##  Nodelist : node2338
+##      CPUs : 1
+##  Mem/Node : 2048 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Mon Feb 16 02:38:42 AM EST 2026
+###############################################################################
+Job: ah_stage_d_fchpa_select (382789)
+Node: node2338
+Date: Mon Feb 16 02:38:42 AM EST 2026
+Submit dir: /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+-------------------
+Wrote selection JSON: logs/stage_d/recovery/selection_20260215_230226.json
+Wrote winner env: logs/stage_d/recovery/selection_20260215_230226.env
+No eligible winner found.

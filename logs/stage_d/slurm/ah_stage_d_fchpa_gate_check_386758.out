@@ -1,0 +1,29 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 386758
+##  Job Name : ah_stage_d_fchpa_gate_check
+##  Nodelist : node2327
+##      CPUs : 1
+##  Mem/Node : 2048 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Mon Feb 16 03:01:18 PM EST 2026
+###############################################################################
+Job: ah_stage_d_fchpa_gate_check (386758)
+Node: node2327
+Date: Mon Feb 16 03:01:18 PM EST 2026
+Submit dir: /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+-------------------
+Stage D Gate Check
+eval_json=logs/stage_d/eval/eval_quadro_stage_d_fchpa_restore_potmix_p2_20k_screen_20260216_113336.json
+default_mean=887.214 default_ci95_lower=786.944 robust_mean=1012.480 robust_ci95_lower=732.874
+pass_default_gate=True
+pass_robustness_gate=True
+pass_holdout_gate=True
+pass_behavior_gate=False
+pass_behavior_extended_gate=False
+pass_pot_mix_gate=False
+pass_behavior_envelope=False
+pass_solver_verified=True
+pass_ci_floor=True
+default_observed fold=0.4906 call=0.3728 half=0.0756 pot=0.0131 pot|legal=0.0161 allin=0.0480 entropy=1.6085
+delta_vs_baseline_default_mean=-44.060 delta_vs_baseline_default_ci95_lower=-56.757
+promotion_pass=False

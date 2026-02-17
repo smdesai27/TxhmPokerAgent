@@ -1,7 +1,7 @@
 import random
 import re
 import time
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
@@ -177,6 +177,30 @@ class Evaluator:
         ]
         return float(max(counts) / total) if counts else 0.0
 
+    @staticmethod
+    def _preflop_legal_conditioned_metrics(diag: Dict[str, float]) -> Dict[str, float]:
+        preflop_total = float(max(1, int(diag.get("preflop_total", 0))))
+        legal_pot = float(max(0, int(diag.get("preflop_legal_pot_raise", 0))))
+        legal_half = float(max(0, int(diag.get("preflop_legal_half_pot", 0))))
+        chosen_pot_when_legal = float(max(0, int(diag.get("preflop_choose_pot_raise_when_legal", 0))))
+        chosen_half_when_legal = float(max(0, int(diag.get("preflop_choose_half_pot_when_legal", 0))))
+
+        pot_legal_rate = legal_pot / preflop_total
+        half_legal_rate = legal_half / preflop_total
+        choose_pot_given_legal = chosen_pot_when_legal / legal_pot if legal_pot > 0.0 else 0.0
+        choose_half_given_legal = chosen_half_when_legal / legal_half if legal_half > 0.0 else 0.0
+
+        return {
+            "diagnostics/preflop_legal_rate/pot_raise": float(pot_legal_rate),
+            "diagnostics/preflop_legal_rate/half_pot": float(half_legal_rate),
+            "diagnostics/preflop_choose_given_legal/pot_raise": float(choose_pot_given_legal),
+            "diagnostics/preflop_choose_given_legal/half_pot": float(choose_half_given_legal),
+            "diagnostics/_preflop_legal_count_pot_raise": int(legal_pot),
+            "diagnostics/_preflop_legal_count_half_pot": int(legal_half),
+            "diagnostics/_preflop_choose_legal_count_pot_raise": int(chosen_pot_when_legal),
+            "diagnostics/_preflop_choose_legal_count_half_pot": int(chosen_half_when_legal),
+        }
+
     def evaluate(self, opponent, num_episodes=100, seed=None, collect_diagnostics: bool = False):
         if seed is not None:
             self._seed_rngs(int(seed))
@@ -191,6 +215,10 @@ class Evaluator:
             "allin": 0,
             "other": 0,
             "preflop_total": 0,
+            "preflop_legal_pot_raise": 0,
+            "preflop_legal_half_pot": 0,
+            "preflop_choose_pot_raise_when_legal": 0,
+            "preflop_choose_half_pot_when_legal": 0,
             "showdown_hands": 0,
             "total_hands": 0,
             "total_terminal_pot_bb": 0.0,
@@ -226,6 +254,30 @@ class Evaluator:
                             action_text=action_text,
                             pot_size=pot_size,
                         )
+                        legal_buckets: List[str] = []
+                        for legal_action in state.legal_actions():
+                            try:
+                                legal_action_text = str(state.action_to_string(current_player, int(legal_action)))
+                            except Exception:
+                                legal_action_text = ""
+                            legal_buckets.append(
+                                self._classify_action_bucket(
+                                    int(legal_action),
+                                    abstraction=abstraction,
+                                    action_text=legal_action_text,
+                                    pot_size=pot_size,
+                                )
+                            )
+                        pot_legal = any(b == "pot_raise" for b in legal_buckets)
+                        half_legal = any(b == "half_pot" for b in legal_buckets)
+                        if pot_legal:
+                            diag["preflop_legal_pot_raise"] += 1
+                        if half_legal:
+                            diag["preflop_legal_half_pot"] += 1
+                        if pot_legal and bucket == "pot_raise":
+                            diag["preflop_choose_pot_raise_when_legal"] += 1
+                        if half_legal and bucket == "half_pot":
+                            diag["preflop_choose_half_pot_when_legal"] += 1
                         diag[bucket] += 1
                         diag["preflop_total"] += 1
                 else:
@@ -264,6 +316,7 @@ class Evaluator:
             hand_denom = max(1, int(diag["total_hands"]))
             preflop_entropy_bits = self._preflop_entropy_bits_from_diag(diag)
             preflop_dominant_action_freq = self._preflop_dominant_action_freq_from_diag(diag)
+            legal_metrics = self._preflop_legal_conditioned_metrics(diag)
             metrics.update(
                 {
                     "diagnostics/action_freq_preflop/fold": float(diag["fold"]) / float(denom),
@@ -284,6 +337,7 @@ class Evaluator:
                     "diagnostics/_showdown_hands": int(diag["showdown_hands"]),
                     "diagnostics/_total_hands": int(diag["total_hands"]),
                     "diagnostics/_total_terminal_pot_bb": float(diag["total_terminal_pot_bb"]),
+                    **legal_metrics,
                 }
             )
         return metrics
@@ -373,6 +427,126 @@ class Evaluator:
             seed=seed,
             collect_diagnostics=collect_diagnostics,
         )
+
+    def build_solver_style_profile(
+        self,
+        iterations: int,
+        seeds: int,
+        episodes_per_seed: int,
+        baseline_algo: str | None = None,
+        seed_base: int | None = None,
+    ) -> Dict[str, object]:
+        """Build a solver-derived preflop style target from MCCFR policy self-play."""
+        algo = baseline_algo or getattr(self.config, "EVAL_BASELINE_ALGO", "mccfr_external_sampling")
+        base_seed = int(seed_base if seed_base is not None else getattr(self.config, "SEED", 42))
+        abstractions = str(getattr(self.config, "BETTING_ABSTRACTION", "fcpa")).lower()
+
+        diag_total = {
+            "fold": 0,
+            "call_check": 0,
+            "half_pot": 0,
+            "pot_raise": 0,
+            "allin": 0,
+            "preflop_total": 0,
+            "preflop_legal_pot_raise": 0,
+            "preflop_legal_half_pot": 0,
+            "preflop_choose_pot_raise_when_legal": 0,
+            "preflop_choose_half_pot_when_legal": 0,
+        }
+        build_seconds: List[float] = []
+
+        for offset in range(max(1, int(seeds))):
+            eval_seed = base_seed + offset
+            payload = self._build_solver_baseline(str(algo), int(iterations), int(eval_seed))
+            build_seconds.append(float(payload["metadata"]["baseline/build_seconds"]))
+            solver_agent = payload["agent"]
+            self._seed_rngs(eval_seed)
+            for _ in range(int(episodes_per_seed)):
+                state = self.env.reset()
+                while not state.is_terminal():
+                    if state.is_chance_node():
+                        outcomes = state.chance_outcomes()
+                        action_list, probs = zip(*outcomes)
+                        action = np.random.choice(action_list, p=probs)
+                        state.apply_action(int(action))
+                        continue
+
+                    player = state.current_player()
+                    pot_size = 0.0
+                    if self._is_preflop(state):
+                        try:
+                            pot_size = float(getattr(state.to_struct(), "pot_size", 0.0))
+                        except Exception:
+                            pot_size = 0.0
+                        legal_buckets = []
+                        for legal_action in state.legal_actions():
+                            try:
+                                legal_text = str(state.action_to_string(player, int(legal_action)))
+                            except Exception:
+                                legal_text = ""
+                            legal_buckets.append(
+                                self._classify_action_bucket(
+                                    int(legal_action),
+                                    abstraction=abstractions,
+                                    action_text=legal_text,
+                                    pot_size=pot_size,
+                                )
+                            )
+                        if any(b == "pot_raise" for b in legal_buckets):
+                            diag_total["preflop_legal_pot_raise"] += 1
+                        if any(b == "half_pot" for b in legal_buckets):
+                            diag_total["preflop_legal_half_pot"] += 1
+
+                    action = int(solver_agent.step(state))
+                    if self._is_preflop(state):
+                        try:
+                            action_text = str(state.action_to_string(player, int(action)))
+                        except Exception:
+                            action_text = ""
+                        bucket = self._classify_action_bucket(
+                            int(action),
+                            abstraction=abstractions,
+                            action_text=action_text,
+                            pot_size=pot_size,
+                        )
+                        if bucket in diag_total:
+                            diag_total[bucket] += 1
+                        diag_total["preflop_total"] += 1
+
+                        if bucket == "pot_raise":
+                            diag_total["preflop_choose_pot_raise_when_legal"] += 1
+                        if bucket == "half_pot":
+                            diag_total["preflop_choose_half_pot_when_legal"] += 1
+
+                    state.apply_action(action)
+
+        preflop_total = float(max(1, int(diag_total["preflop_total"])))
+        target = {
+            "fold": float(diag_total["fold"]) / preflop_total,
+            "call_check": float(diag_total["call_check"]) / preflop_total,
+            "half_pot": float(diag_total["half_pot"]) / preflop_total,
+            "pot_raise": float(diag_total["pot_raise"]) / preflop_total,
+            "allin": float(diag_total["allin"]) / preflop_total,
+        }
+        legal_metrics = self._preflop_legal_conditioned_metrics(diag_total)
+
+        return {
+            "baseline/algo": str(algo),
+            "baseline/iters": int(iterations),
+            "baseline/seeds": int(seeds),
+            "baseline/episodes_per_seed": int(episodes_per_seed),
+            "baseline/seed_base": int(base_seed),
+            "baseline/build_seconds_mean": float(np.mean(build_seconds)) if build_seconds else 0.0,
+            "target": target,
+            "target/preflop_choose_given_legal/pot_raise": float(
+                legal_metrics["diagnostics/preflop_choose_given_legal/pot_raise"]
+            ),
+            "target/preflop_choose_given_legal/half_pot": float(
+                legal_metrics["diagnostics/preflop_choose_given_legal/half_pot"]
+            ),
+            "diagnostics/_preflop_total_count": int(diag_total["preflop_total"]),
+            **legal_metrics,
+        }
 
     def evaluate_nash_conv(self):
         model_policy = self._ModelPolicyAdapter(self)

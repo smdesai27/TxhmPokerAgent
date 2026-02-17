@@ -1,0 +1,40 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 386754
+##  Job Name : ah_stage_d_fchpa_corrective_screen
+##  Nodelist : gpu2505
+##      CPUs : 1
+##  Mem/Node : 32768 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Mon Feb 16 12:56:24 PM EST 2026
+###############################################################################
+Job: ah_stage_d_fchpa_corrective_screen (386754)
+Node: gpu2505
+Date: Mon Feb 16 12:56:24 PM EST 2026
+Submit dir: /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+-------------------
+Running Stage D corrective SCREEN evaluation:
+  checkpoint=checkpoints/snapshots/stage_d/recovery/quadro_stage_d_fchpa_restore_potmix_p1_20k_20260216_113336.pt
+  config=quadro_stage_d_fchpa_restore_potmix_p1_20k
+  episodes_per_seed=5000
+  holdout_seed_base=97142
+  holdout_seed_count=5
+  output=logs/stage_d/eval/eval_quadro_stage_d_fchpa_restore_potmix_p1_20k_screen_20260216_113336.json
+Optional module pokerkit_wrapper was not importable: No module named 'pokerkit'
+Evaluator device: cuda
+Running complete eval profile='standard' with 2 solver tier(s), seed base=42
+Random BB/100=789.760 | AlwaysCall BB/100=457.770 | PotPressure BB/100=1198.440
+Control baseline (0-iter MCCFR-ES): bb/100=1123.400, build_s=0.000
+Tier 'default_cfr': baseline=mccfr_external_sampling, iters=5000, seeds=5, episodes/seed=5000
+  seed=42: bb/100=961.690, stderr=130.443, build_s=79.956
+  seed=43: bb/100=1025.820, stderr=131.141, build_s=79.663
+  seed=44: bb/100=907.570, stderr=128.577, build_s=79.537
+  seed=45: bb/100=764.170, stderr=128.886, build_s=80.016
+  seed=46: bb/100=917.000, stderr=130.827, build_s=79.523
+  aggregate: mean=915.250, stderr=43.168, ci95=+/-84.609, lower=830.641, pass=True
+Tier 'robustness': baseline=mccfr_external_sampling, iters=10000, seeds=3, episodes/seed=5000
+  seed=42: bb/100=979.660, stderr=133.729, build_s=154.379
+  seed=43: bb/100=932.220, stderr=129.591, build_s=154.466
+  seed=44: bb/100=805.940, stderr=131.785, build_s=157.196
+  aggregate: mean=905.940, stderr=51.842, ci95=+/-101.609, lower=804.331, pass=True
+Overall gates: default_cfr=True, robustness=True, holdout=True, behavior=False, behavior_extended=False, pot_mix=False, require_behavior_extended=True, verified=True, pass_all=False
+Wrote complete evaluation report: logs/stage_d/eval/eval_quadro_stage_d_fchpa_restore_potmix_p1_20k_screen_20260216_113336.json

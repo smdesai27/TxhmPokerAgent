@@ -14,7 +14,7 @@ import yaml
 
 from poker_rl_agent.environment.openspiel_wrapper import PokerEnv
 from poker_rl_agent.environment.state_representation import StateEncoder
-from poker_rl_agent.evaluation.baseline_agents import AlwaysCallAgent
+from poker_rl_agent.evaluation.baseline_agents import AlwaysCallAgent, PassiveCallerAgent
 from poker_rl_agent.evaluation.evaluator import Evaluator
 from poker_rl_agent.models.alpha_holdem_net import AlphaHoldemNetwork
 from poker_rl_agent.models.model_utils import masked_logits
@@ -211,6 +211,33 @@ def test_solver_diagnostics_are_finite_and_bounded():
     assert float(stats["diagnostics/avg_pot_size_bb"]) >= 0.0
 
 
+def test_solver_diagnostics_include_legal_conditioned_rates():
+    cfg = _test_config()
+    cfg.ENV_PRESET = "hunl_fchpa"
+    cfg.BETTING_ABSTRACTION = "fchpa"
+    env = PokerEnv(env_preset="hunl_fchpa", betting_abstraction="fchpa")
+    model = AlphaHoldemNetwork(env.num_actions(), cfg)
+    evaluator = Evaluator(model, config=cfg, device="cpu")
+
+    stats = evaluator.evaluate_vs_solver_baseline(
+        baseline_algo="mccfr_external_sampling",
+        iterations=1,
+        num_episodes=8,
+        seed=555,
+        collect_diagnostics=True,
+    )
+    keys = [
+        "diagnostics/preflop_legal_rate/pot_raise",
+        "diagnostics/preflop_legal_rate/half_pot",
+        "diagnostics/preflop_choose_given_legal/pot_raise",
+        "diagnostics/preflop_choose_given_legal/half_pot",
+    ]
+    for key in keys:
+        assert key in stats
+        assert np.isfinite(float(stats[key]))
+        assert 0.0 <= float(stats[key]) <= 1.0
+
+
 def test_action_bucket_classification_supports_fchpa_alias():
     assert Evaluator._classify_action_bucket(0, "fchpa") == "fold"
     assert Evaluator._classify_action_bucket(1, "fchpa") == "call_check"
@@ -331,6 +358,28 @@ def test_always_call_agent_prefers_non_fold_when_available():
         assert "fold" not in action_name
 
 
+def test_passive_caller_agent_avoids_raises_when_call_available():
+    class _State:
+        def legal_actions(self):
+            return [0, 1, 2, 3]
+
+        def current_player(self):
+            return 0
+
+        def action_to_string(self, _player, action):
+            mapping = {
+                0: "player=0 move=Fold",
+                1: "player=0 move=Call",
+                2: "player=0 move=Raise",
+                3: "player=0 move=Bet",
+            }
+            return mapping[int(action)]
+
+    agent = PassiveCallerAgent()
+    action = int(agent.step(_State()))
+    assert action == 1
+
+
 def test_league_manager_capacity_and_sampling():
     cfg = _test_config()
     env = PokerEnv(env_preset="hunl_fcpa", betting_abstraction="fcpa")
@@ -367,6 +416,23 @@ def test_trainer_reports_stability_metrics():
     trainer = Trainer(cfg)
     rollout_metrics = trainer._collect_rollouts()
     assert rollout_metrics["rollout/transitions"] >= 0
+    for key in [
+        "train/preflop_fold_freq",
+        "train/preflop_call_check_freq",
+        "train/preflop_half_pot_freq",
+        "train/preflop_pot_raise_freq",
+        "train/preflop_allin_freq",
+    ]:
+        assert key in rollout_metrics
+        assert np.isfinite(float(rollout_metrics[key]))
+    preflop_sum = (
+        float(rollout_metrics["train/preflop_fold_freq"])
+        + float(rollout_metrics["train/preflop_call_check_freq"])
+        + float(rollout_metrics["train/preflop_half_pot_freq"])
+        + float(rollout_metrics["train/preflop_pot_raise_freq"])
+        + float(rollout_metrics["train/preflop_allin_freq"])
+    )
+    assert 0.0 <= preflop_sum <= 1.0001
 
     update_metrics = trainer._ppo_update()
     assert "train/clipfrac" in update_metrics
@@ -416,6 +482,33 @@ def test_entropy_coef_schedule_is_bounded_and_monotonic():
     assert all(vals[i] >= vals[i + 1] - 1e-12 for i in range(len(vals) - 1))
 
 
+def test_style_regularizer_disabled_forces_zero_coef():
+    cfg = _test_config()
+    cfg.STYLE_REG_ENABLE = False
+    cfg.STYLE_REG_COEF_START = 0.02
+    cfg.STYLE_REG_COEF_END = 0.005
+    trainer = Trainer(cfg)
+    assert trainer._style_reg_coef(0.0) == pytest.approx(0.0)
+    assert trainer._style_reg_coef(1.0) == pytest.approx(0.0)
+
+
+def test_schedule_progress_relative_to_resume_window():
+    cfg = _test_config()
+    cfg.CFR_ITERATIONS = 19000
+    cfg.SCHEDULE_RELATIVE_TO_RESUME = True
+    trainer = Trainer(cfg)
+
+    start_step = 18000
+    p_start = trainer._effective_schedule_progress(iteration=18000, start_step=start_step)
+    p_mid = trainer._effective_schedule_progress(iteration=18499, start_step=start_step)
+    p_end = trainer._effective_schedule_progress(iteration=18999, start_step=start_step)
+
+    assert 0.0 < p_start < p_mid < p_end
+    assert abs(p_start - (1.0 / 1000.0)) < 1e-9
+    assert abs(p_mid - 0.5) < 1e-9
+    assert abs(p_end - 1.0) < 1e-9
+
+
 def test_adaptive_kl_controller_adjusts_learning_rate():
     cfg = _test_config()
     trainer = Trainer(cfg)
@@ -429,6 +522,31 @@ def test_adaptive_kl_controller_adjusts_learning_rate():
         trainer._maybe_adjust_adaptive_lr(avg_kl=cfg.PPO_TARGET_KL * 0.1)
     lr_after_low_streak = trainer.optimizer.param_groups[0]["lr"]
     assert lr_after_low_streak > lr_after_high
+
+
+def test_trainer_resolves_opponent_mix_with_legacy_fallback():
+    cfg = _test_config()
+    cfg.LEAGUE_RANDOM_OPPONENT_PROB = 0.25
+    cfg.LEAGUE_OPPONENT_PROB = 0.0
+    cfg.EXPLOIT_OPPONENT_PROB = 0.0
+    cfg.RANDOM_OPPONENT_PROB = 0.0
+    trainer = Trainer(cfg)
+    mix = trainer._resolve_opponent_mix()
+    assert abs(mix["random"] - 0.25) < 1e-9
+    assert abs(mix["league"] - 0.75) < 1e-9
+    assert abs(mix["exploit"] - 0.0) < 1e-9
+
+
+def test_trainer_resolves_opponent_mix_explicit_probs():
+    cfg = _test_config()
+    cfg.LEAGUE_OPPONENT_PROB = 0.60
+    cfg.EXPLOIT_OPPONENT_PROB = 0.25
+    cfg.RANDOM_OPPONENT_PROB = 0.15
+    trainer = Trainer(cfg)
+    mix = trainer._resolve_opponent_mix()
+    assert abs(mix["league"] - 0.60) < 1e-6
+    assert abs(mix["exploit"] - 0.25) < 1e-6
+    assert abs(mix["random"] - 0.15) < 1e-6
 
 
 def test_explained_var_uses_variance_floor_for_validity():
@@ -670,6 +788,7 @@ def test_stage_d_ablation_and_selection_slurm_scripts_are_present_and_valid_bash
         "slurm_stage_d_fchpa_ablation_eval.slurm",
         "slurm_stage_d_fchpa_selected_16k_train.slurm",
         "slurm_stage_d_fchpa_selected_16k_cert_eval.slurm",
+        "slurm_stage_d_build_style_target.slurm",
     ]:
         slurm_path = str(PROJECT_ROOT / "scripts" / name)
         assert os.path.exists(slurm_path)
@@ -712,6 +831,25 @@ def test_stage_d_ablation_presets_exist():
         assert data[name]["BETTING_ABSTRACTION"] == "fchpa"
         assert data[name]["STRICT_ABSTRACTION"] is True
         assert data[name]["RESUME_FROM"] == "checkpoints/latest.pt"
+
+
+def test_stage_d_recovery_presets_exist():
+    cfg_path = PROJECT_ROOT / "configs" / "training_configs.yaml"
+    data = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+
+    for name in [
+        "quadro_stage_d_fchpa_recover_balanced_probe_19k",
+        "quadro_stage_d_fchpa_recover_conservative_probe_19k",
+        "quadro_stage_d_fchpa_recover_selected_20k",
+        "quadro_stage_d_fchpa_recover_selected_20k_conservative",
+        "quadro_stage_d_fchpa_recover_selected_20k_balanced",
+        "quadro_stage_d_fchpa_recover_c1_strict_conservative_20k",
+        "quadro_stage_d_fchpa_recover_c2_halfpot_nudge_20k",
+    ]:
+        assert name in data
+        assert data[name]["BETTING_ABSTRACTION"] == "fchpa"
+        assert data[name]["STRICT_ABSTRACTION"] is True
+        assert "RESUME_FROM" in data[name]
 
 
 def _write_temp_config(config_path: str):
@@ -920,6 +1058,7 @@ def test_evaluate_complete_script_writes_expected_schema():
         assert "overall/pass_holdout_gate" in payload
         assert "overall/pass_behavior_gate" in payload
         assert "overall/pass_behavior_gate_extended" in payload
+        assert "overall/require_behavior_extended" in payload
         assert "overall/pass_all" in payload
         assert "verification/solver_training_verified" in payload
         assert "verification/control_zero_iter" in payload
@@ -934,7 +1073,7 @@ def test_evaluate_complete_script_writes_expected_schema():
         assert "behavior_gate_extended" in payload
         assert "observed_call_check_freq" in payload["behavior_gate_extended"]
         assert "observed_half_pot_freq" in payload["behavior_gate_extended"]
-        primary_seeds = {row["seed"] for row in payload["solver_tiers"][0]["per_seed"]}
+        primary_seeds = {row.get("seed", row.get("baseline/seed")) for row in payload["solver_tiers"][0]["per_seed"]}
         holdout_seeds = {row["baseline/seed"] for row in payload["holdout"]["per_seed"]}
         assert primary_seeds.isdisjoint(holdout_seeds)
         tier0 = payload["solver_tiers"][0]
@@ -989,6 +1128,65 @@ def test_evaluate_complete_reproducibility_same_seed():
             assert abs(mean_a - mean_b) < 1e-9
 
 
+def test_evaluate_complete_respects_behavior_extended_requirement_flag():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        cfg = Config()
+        cfg.HIDDEN_DIM = 64
+        cfg.NUM_LAYERS_CARD = 2
+        cfg.NUM_LAYERS_ACTION = 1
+        cfg.DEVICE = "cpu"
+        env = PokerEnv(env_preset="hunl_fcpa", betting_abstraction="fcpa")
+        model = AlphaHoldemNetwork(env.num_actions(), cfg)
+
+        checkpoint_path = os.path.join(temp_dir, "tmp_eval_complete_ckpt.pt")
+        torch.save({"model_state_dict": model.state_dict(), "step": 0}, checkpoint_path)
+        config_path = os.path.join(temp_dir, "eval_complete_test_config.yaml")
+        with open(config_path, "w", encoding="utf-8") as fh:
+            fh.write(
+                "default:\n"
+                "  DEVICE: \"cpu\"\n"
+                "  HIDDEN_DIM: 64\n"
+                "  NUM_LAYERS_CARD: 2\n"
+                "  NUM_LAYERS_ACTION: 1\n"
+                "  EVAL_REQUIRE_BEHAVIOR_EXTENDED: false\n"
+                "debug: {}\n"
+            )
+
+        script = str(PROJECT_ROOT / "poker_rl_agent" / "scripts" / "evaluate_complete.py")
+        out_default = os.path.join(temp_dir, "eval_default.json")
+        out_forced = os.path.join(temp_dir, "eval_forced.json")
+
+        base_cmd = [
+            sys.executable,
+            script,
+            "--checkpoint",
+            checkpoint_path,
+            "--config_file",
+            config_path,
+            "--config_name",
+            "debug",
+            "--episodes_per_seed",
+            "2",
+            "--profile",
+            "quick",
+            "--seed",
+            "123",
+        ]
+
+        subprocess.run(base_cmd + ["--output_json", out_default], check=True, cwd=str(PROJECT_ROOT), timeout=180)
+        subprocess.run(
+            base_cmd + ["--require_behavior_extended", "--output_json", out_forced],
+            check=True,
+            cwd=str(PROJECT_ROOT),
+            timeout=180,
+        )
+
+        default_payload = json.loads(Path(out_default).read_text())
+        forced_payload = json.loads(Path(out_forced).read_text())
+        assert default_payload["overall/require_behavior_extended"] is False
+        assert forced_payload["overall/require_behavior_extended"] is True
+
+
 def test_evaluate_complete_standard_profile_tiers():
     module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "evaluate_complete.py"
     spec = importlib.util.spec_from_file_location("evaluate_complete_module", str(module_path))
@@ -1038,6 +1236,99 @@ def test_evaluate_complete_verification_fails_for_zero_iter_tier():
     assert verified is False
     assert "default_cfr:iterations<=0" in errors
     assert "default_cfr" in delta
+
+
+def test_evaluate_complete_aggression_gate_helper():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "evaluate_complete.py"
+    spec = importlib.util.spec_from_file_location("evaluate_complete_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    cfg = Config()
+    cfg.EVAL_AGGRESSION_GATE_ENABLE = True
+    cfg.EVAL_MIN_PRE_FLOP_RAISE_TOTAL_FREQ = 0.08
+
+    metrics_row = {
+        "diagnostics/action_freq_preflop/half_pot": 0.03,
+        "diagnostics/action_freq_preflop/pot_raise": 0.03,
+        "diagnostics/action_freq_preflop/allin": 0.03,
+    }
+    passed, details = module._passes_aggression_gate(cfg, metrics_row)
+    assert passed is True
+    assert details["observed_preflop_raise_total_freq"] == pytest.approx(0.09)
+
+    metrics_row_low = {
+        "diagnostics/action_freq_preflop/half_pot": 0.01,
+        "diagnostics/action_freq_preflop/pot_raise": 0.01,
+        "diagnostics/action_freq_preflop/allin": 0.01,
+    }
+    passed_low, details_low = module._passes_aggression_gate(cfg, metrics_row_low)
+    assert passed_low is False
+    assert details_low["min_preflop_raise_total_freq"] == pytest.approx(0.08)
+
+
+def test_select_stage_d_winner_score_uses_exploit_bonus():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "select_stage_d_recovery_winner.py"
+    spec = importlib.util.spec_from_file_location("select_stage_d_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        report_path = Path(temp_dir) / "candidate.json"
+        payload = {
+            "config_name": "cfg_probe",
+            "checkpoint": "checkpoints/latest.pt",
+            "verification/solver_training_verified": True,
+            "overall/pass_default_cfr_gate": True,
+            "overall/pass_robustness_gate": True,
+            "overall/pass_holdout_gate": True,
+            "overall/pass_behavior_gate": True,
+            "overall/pass_behavior_gate_extended": True,
+            "overall/pass_pot_mix_gate": True,
+            "overall/exploit_weighted_bb100": 300.0,
+            "solver_tiers": [
+                {
+                    "iterations": 5000,
+                    "ci95_lower_bb100": 800.0,
+                    "aggregate": {"bb_per_100": {"mean": 900.0}},
+                    "diagnostics/action_freq_preflop/fold": 0.45,
+                    "diagnostics/action_freq_preflop/call_check": 0.48,
+                    "diagnostics/action_freq_preflop/half_pot": 0.06,
+                    "diagnostics/action_freq_preflop/pot_raise": 0.01,
+                    "diagnostics/preflop_choose_given_legal/pot_raise": 0.02,
+                    "diagnostics/action_freq_preflop/allin": 0.01,
+                    "diagnostics/preflop_action_entropy_bits": 1.3,
+                },
+                {
+                    "iterations": 10000,
+                    "ci95_lower_bb100": 700.0,
+                    "aggregate": {"bb_per_100": {"mean": 850.0}},
+                },
+            ],
+        }
+        report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+        scored = module._score_candidate(
+            name="probe_x",
+            report_path=report_path,
+            min_ci_floor=760.0,
+            max_allin_freq=0.03,
+            min_call_check_freq=0.47,
+            min_half_pot_freq=0.01,
+            min_raise_total_freq=0.079,
+            min_pot_choose_given_legal_freq=0.01,
+            min_fold_freq=0.41,
+            max_fold_freq=0.52,
+            min_entropy_bits=1.1,
+            max_entropy_bits=1.8,
+            exploit_weight=0.2,
+            exploit_clip=500.0,
+        )
+        assert scored.eligible is True
+        assert scored.exploit_clipped_bb100 == pytest.approx(300.0)
+        assert scored.winner_score == pytest.approx(860.0)
 
 
 def test_evaluate_complete_robustness_gate_toggle():
@@ -1212,3 +1503,167 @@ def test_archive_run_script_creates_snapshot_manifest():
         assert (out / "config" / "config_snapshot.yaml").exists()
         assert (out / "manifest.json").exists()
         assert checkpoint_path.exists()
+
+
+def test_check_eval_gates_pass_and_fail():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "check_eval_gates.py"
+    spec = importlib.util.spec_from_file_location("check_eval_gates_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    report = {
+        "solver_tiers": [
+            {
+                "iterations": 5000,
+                "aggregate": {"bb_per_100": {"mean": 900.0}},
+                "ci95_lower_bb100": 840.0,
+            },
+            {
+                "iterations": 10000,
+                "aggregate": {"bb_per_100": {"mean": 910.0}},
+                "ci95_lower_bb100": 850.0,
+            },
+        ],
+        "overall/pass_default_cfr_gate": True,
+        "overall/pass_robustness_gate": True,
+        "overall/pass_holdout_gate": True,
+        "overall/pass_behavior_gate": True,
+        "overall/pass_behavior_gate_extended": True,
+        "verification/solver_training_verified": True,
+    }
+
+    passed, summary = module.check_report(
+        report,
+        ci_floor=830.0,
+        require_behavior_extended=True,
+        require_solver_verified=True,
+    )
+    assert passed is True
+    assert summary["checks"]["pass_ci_floor"] is True
+
+    report["overall/pass_behavior_gate_extended"] = False
+    passed2, summary2 = module.check_report(
+        report,
+        ci_floor=830.0,
+        require_behavior_extended=True,
+        require_solver_verified=True,
+    )
+    assert passed2 is False
+    assert summary2["checks"]["pass_behavior_extended_gate"] is False
+
+
+def test_check_eval_gates_behavior_envelope_thresholds():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "check_eval_gates.py"
+    spec = importlib.util.spec_from_file_location("check_eval_gates_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    report = {
+        "solver_tiers": [
+            {
+                "iterations": 5000,
+                "aggregate": {"bb_per_100": {"mean": 880.0}},
+                "ci95_lower_bb100": 780.0,
+                "diagnostics/action_freq_preflop/fold": 0.48,
+                "diagnostics/action_freq_preflop/call_check": 0.48,
+                "diagnostics/action_freq_preflop/half_pot": 0.02,
+                "diagnostics/action_freq_preflop/allin": 0.02,
+                "diagnostics/preflop_action_entropy_bits": 1.3,
+            },
+            {
+                "iterations": 10000,
+                "aggregate": {"bb_per_100": {"mean": 860.0}},
+                "ci95_lower_bb100": 760.0,
+            },
+        ],
+        "overall/pass_default_cfr_gate": True,
+        "overall/pass_robustness_gate": True,
+        "overall/pass_holdout_gate": True,
+        "overall/pass_behavior_gate": True,
+        "overall/pass_behavior_gate_extended": True,
+        "verification/solver_training_verified": True,
+    }
+
+    passed, summary = module.check_report(
+        report,
+        ci_floor=760.0,
+        require_behavior_extended=True,
+        require_solver_verified=True,
+        max_allin_freq=0.03,
+        min_call_check_freq=0.47,
+        min_half_pot_freq=0.01,
+        min_fold_freq=0.42,
+        max_fold_freq=0.52,
+        min_entropy_bits=1.1,
+        max_entropy_bits=1.8,
+    )
+    assert passed is True
+    assert summary["checks"]["pass_behavior_envelope"] is True
+
+    report["solver_tiers"][0]["diagnostics/action_freq_preflop/allin"] = 0.08
+    failed, summary_fail = module.check_report(
+        report,
+        ci_floor=760.0,
+        require_behavior_extended=True,
+        require_solver_verified=True,
+        max_allin_freq=0.03,
+        min_call_check_freq=0.47,
+        min_half_pot_freq=0.01,
+        min_fold_freq=0.42,
+        max_fold_freq=0.52,
+        min_entropy_bits=1.1,
+        max_entropy_bits=1.8,
+    )
+    assert failed is False
+    assert summary_fail["checks"]["pass_behavior_envelope"] is False
+
+
+def test_stage_d_corrective_scripts_exist_and_are_shell_valid():
+    script_paths = [
+        PROJECT_ROOT / "scripts" / "slurm_stage_d_fchpa_corrective_train.slurm",
+        PROJECT_ROOT / "scripts" / "slurm_stage_d_fchpa_corrective_screen_eval.slurm",
+        PROJECT_ROOT / "scripts" / "slurm_stage_d_fchpa_corrective_cert_eval.slurm",
+        PROJECT_ROOT / "scripts" / "slurm_stage_d_fchpa_eval_gate_check.slurm",
+    ]
+    for path in script_paths:
+        assert path.exists(), f"Missing script: {path}"
+        subprocess.run(["bash", "-n", str(path)], check=True, cwd=str(PROJECT_ROOT), timeout=30)
+
+
+def test_stage_d_recovery_scripts_exist_and_are_shell_valid():
+    script_paths = [
+        PROJECT_ROOT / "scripts" / "slurm_stage_d_fchpa_recovery_select.slurm",
+        PROJECT_ROOT / "scripts" / "slurm_stage_d_fchpa_recovery_prepare_winner.slurm",
+        PROJECT_ROOT / "scripts" / "submit_stage_d_fchpa_recovery_cycle.sh",
+        PROJECT_ROOT / "scripts" / "run_stage_d_human_validation.sh",
+    ]
+    for path in script_paths:
+        assert path.exists(), f"Missing script: {path}"
+        subprocess.run(["bash", "-n", str(path)], check=True, cwd=str(PROJECT_ROOT), timeout=30)
+
+
+def test_resolve_stage_d_selected_config_mapping():
+    module_path = PROJECT_ROOT / "poker_rl_agent" / "scripts" / "resolve_stage_d_selected_config.py"
+    spec = importlib.util.spec_from_file_location("resolve_stage_d_selected_config_module", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    conservative = "quadro_stage_d_fchpa_recover_selected_20k_conservative"
+    balanced = "quadro_stage_d_fchpa_recover_selected_20k_balanced"
+
+    assert module.resolve_selected_config("probe_b", conservative, balanced, conservative) == conservative
+    assert module.resolve_selected_config("probe_a", conservative, balanced, conservative) == balanced
+    assert module.resolve_selected_config("unexpected", conservative, balanced, conservative) == conservative
+    assert (
+        module.resolve_selected_config(
+            "probe_a",
+            winner_config_name="quadro_stage_d_fchpa_recover_c1_strict_conservative_20k",
+            conservative_config=conservative,
+            balanced_config=balanced,
+            fallback_config=conservative,
+        )
+        == conservative
+    )

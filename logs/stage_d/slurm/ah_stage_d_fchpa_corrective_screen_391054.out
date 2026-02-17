@@ -1,0 +1,40 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 391054
+##  Job Name : ah_stage_d_fchpa_corrective_screen
+##  Nodelist : gpu2110
+##      CPUs : 1
+##  Mem/Node : 32768 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Mon Feb 16 07:06:10 PM EST 2026
+###############################################################################
+Job: ah_stage_d_fchpa_corrective_screen (391054)
+Node: gpu2110
+Date: Mon Feb 16 07:06:10 PM EST 2026
+Submit dir: /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+-------------------
+Running Stage D corrective SCREEN evaluation:
+  checkpoint=checkpoints/snapshots/stage_d/recovery/quadro_stage_d_fchpa_evfirst_probe_h2_20k_20260216_161321.pt
+  config=quadro_stage_d_fchpa_evfirst_probe_h2_20k
+  episodes_per_seed=5000
+  holdout_seed_base=98142
+  holdout_seed_count=5
+  output=logs/stage_d/eval/eval_quadro_stage_d_fchpa_evfirst_probe_h2_20k_screen_20260216_161321.json
+Optional module pokerkit_wrapper was not importable: No module named 'pokerkit'
+Evaluator device: cuda
+Running complete eval profile='standard' with 2 solver tier(s), seed base=42
+Random BB/100=817.180 | AlwaysCall BB/100=658.040 | PotPressure BB/100=1349.080
+Control baseline (0-iter MCCFR-ES): bb/100=1161.450, build_s=0.000
+Tier 'default_cfr': baseline=mccfr_external_sampling, iters=5000, seeds=5, episodes/seed=5000
+  seed=42: bb/100=995.730, stderr=131.323, build_s=80.758
+  seed=43: bb/100=842.960, stderr=131.324, build_s=80.290
+  seed=44: bb/100=910.430, stderr=130.324, build_s=80.326
+  seed=45: bb/100=886.820, stderr=132.115, build_s=81.534
+  seed=46: bb/100=772.680, stderr=129.244, build_s=80.846
+  aggregate: mean=881.724, stderr=36.906, ci95=+/-72.335, lower=809.389, pass=True
+Tier 'robustness': baseline=mccfr_external_sampling, iters=10000, seeds=3, episodes/seed=5000
+  seed=42: bb/100=1011.310, stderr=132.365, build_s=156.814
+  seed=43: bb/100=1038.560, stderr=132.808, build_s=156.611
+  seed=44: bb/100=709.300, stderr=132.395, build_s=159.898
+  aggregate: mean=919.723, stderr=105.505, ci95=+/-206.790, lower=712.933, pass=True
+Overall gates: default_cfr=True, robustness=True, holdout=True, behavior=True, behavior_extended=False, aggression=True, envelope=False, require_behavior_extended=True, verified=True, pass_all=False
+Wrote complete evaluation report: logs/stage_d/eval/eval_quadro_stage_d_fchpa_evfirst_probe_h2_20k_screen_20260216_161321.json
