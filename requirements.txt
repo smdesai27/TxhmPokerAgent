@@ -7,3 +7,5 @@ wandb>=0.15.0
 
 # Dev / testing
 pytest>=7.0.0
+fastapi>=0.100.0
+uvicorn>=0.34.0

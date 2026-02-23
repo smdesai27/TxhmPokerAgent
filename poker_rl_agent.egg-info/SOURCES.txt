@@ -16,10 +16,15 @@ poker_rl_agent/models/alpha_holdem_net.py
 poker_rl_agent/models/card_tower.py
 poker_rl_agent/models/model_utils.py
 poker_rl_agent/scripts/archive_run.py
+poker_rl_agent/scripts/build_solver_style_target.py
+poker_rl_agent/scripts/check_eval_gates.py
 poker_rl_agent/scripts/checkpoint_manager.py
 poker_rl_agent/scripts/evaluate.py
 poker_rl_agent/scripts/evaluate_complete.py
+poker_rl_agent/scripts/organize_stage_d_artifacts.py
 poker_rl_agent/scripts/play_against_agent.py
+poker_rl_agent/scripts/resolve_stage_d_selected_config.py
+poker_rl_agent/scripts/select_stage_d_recovery_winner.py
 poker_rl_agent/scripts/summarize_stage_d_ablations.py
 poker_rl_agent/scripts/train.py
 poker_rl_agent/scripts/verify_setup.py
