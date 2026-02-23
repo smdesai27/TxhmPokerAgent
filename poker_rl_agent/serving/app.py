@@ -218,10 +218,10 @@ def new_hand(session_id: str):
 
 def main():
     parser = argparse.ArgumentParser(description="AlphaHoldem Poker Web Server")
-    parser.add_argument("--checkpoint", type=str, default="/Users/sanildesai/Documents/CodeProjects/AntigravityPokerAgent/checkpoints/latest.pt")
+    parser.add_argument("--checkpoint", type=str, default="checkpoints/latest.pt")
     parser.add_argument("--config_file", type=str, default="configs/training_configs.yaml")
     parser.add_argument("--config_name", type=str, default="default")
-    parser.add_argument("--game_mode", type=str, choices=["fullgame", "fcpa", "fcpha", "fchpa"], default="fcpa")
+    parser.add_argument("--game_mode", type=str, choices=["fullgame", "fcpa", "fcpha", "fchpa"], default="fchpa")
     parser.add_argument("--bot_policy", type=str, choices=["sample", "argmax"], default="sample")
     parser.add_argument("--policy_temperature", type=float, default=1.0)
     parser.add_argument("--host", type=str, default="127.0.0.1")
