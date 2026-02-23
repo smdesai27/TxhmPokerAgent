@@ -1,0 +1,22 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 475141
+##  Job Name : ah_final_optimization_eval
+##  Nodelist : gpu2110
+##      CPUs : 1
+##  Mem/Node : 32768 MB
+## Directory : /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+##   Job Started : Mon Feb 23 10:43:25 AM EST 2026
+###############################################################################
+Job: ah_final_optimization_eval (475141)
+Node: gpu2110
+Date: Mon Feb 23 10:43:25 AM EST 2026
+Submit dir: /oscar/home/smdesai/antigravity_poker/anitgravity-txhm
+-------------------
+Running final optimization INTERVIEW evaluation:
+  checkpoint=checkpoints/latest.pt
+  config=final_optimization
+  profile=interview
+  episodes_per_seed=5000
+  holdout_seed_base=92042
+  holdout_seed_count=5
+  output=logs/final_opt/eval/eval_interview_475141.json
