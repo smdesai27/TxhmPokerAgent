@@ -1806,7 +1806,7 @@ final_optimization:
   STRICT_ABSTRACTION: true
   RESUME_FROM: "checkpoints/latest.pt"
   SCHEDULE_RELATIVE_TO_RESUME: true
-  CFR_ITERATIONS: 35000
+  CFR_ITERATIONS: 39000   # 5k fine-tuning from checkpoint at ~34k
   ROLLOUT_EPISODES: 512
   MIN_ROLLOUT_TRANSITIONS: 1024
   LR: 0.00005
