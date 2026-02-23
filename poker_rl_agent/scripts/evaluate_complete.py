@@ -1,4 +1,5 @@
 import argparse
+import gc
 import json
 import os
 import random
@@ -588,6 +589,10 @@ def main():
             f"  aggregate: mean={agg['mean']:.3f}, stderr={agg['stderr']:.3f}, "
             f"ci95=+/-{agg['ci95']:.3f}, lower={ci95_lower:.3f}, pass={pass_gate}"
         )
+
+        # Free solver policy memory before building next (larger) tier.
+        evaluator._baseline_cache.clear()
+        gc.collect()
 
     solver_training_verified, control_delta_bb100, verification_errors = _compute_solver_verification(
         solver_tiers=solver_tiers,
