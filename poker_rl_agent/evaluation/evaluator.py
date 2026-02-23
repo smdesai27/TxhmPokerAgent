@@ -548,6 +548,121 @@ class Evaluator:
             **legal_metrics,
         }
 
+    @staticmethod
+    def _estimate_preflop_hand_strength(player_hands) -> float:
+        """Coarse preflop equity proxy from hole cards (no external deps).
+
+        Pairs:     score = 0.6 + 0.4 * (rank / 12)  → range [0.60, 1.00]
+        Non-pairs: score = (rank0 + rank1) / 24 + 0.05 if suited → range [0.0, ~1.0]
+
+        Card indices follow the OpenSpiel convention: index = rank * 4 + suit
+        where rank ∈ [0..12] (2=0 … A=12) and suit ∈ [0..3].
+        """
+        try:
+            cards = list(player_hands)
+            if len(cards) < 2:
+                return 0.5
+            c0, c1 = int(cards[0]), int(cards[1])
+            if c0 < 0 or c0 > 51 or c1 < 0 or c1 > 51:
+                return 0.5
+            rank0, suit0 = divmod(c0, 4)
+            rank1, suit1 = divmod(c1, 4)
+            if rank0 == rank1:
+                return 0.6 + 0.4 * (rank0 / 12.0)
+            high_rank = max(rank0, rank1)
+            low_rank = min(rank0, rank1)
+            score = (high_rank + low_rank) / 24.0
+            if suit0 == suit1:
+                score += 0.05
+            return min(1.0, max(0.0, score))
+        except Exception:
+            return 0.5
+
+    @torch.no_grad()
+    def evaluate_hand_strength_correlation(
+        self,
+        opponent,
+        num_episodes: int = 2000,
+        seed: int = 42,
+        num_bins: int = 5,
+    ) -> dict:
+        """Bin preflop decisions by coarse hand strength and record action
+        frequency distributions per bin.  Demonstrates strategic coherence:
+        fold frequency should decrease and raise/all-in frequency should
+        increase with hand strength."""
+        self._seed_rngs(seed)
+        abstraction = str(getattr(self.config, "BETTING_ABSTRACTION", "fcpa")).lower()
+
+        bin_edges = [i / num_bins for i in range(num_bins + 1)]
+        action_labels = ["fold", "call_check", "half_pot", "pot_raise", "allin"]
+        bins = [{label: 0 for label in action_labels} for _ in range(num_bins)]
+        bin_counts = [0] * num_bins
+
+        for episode_idx in range(num_episodes):
+            state = self.env.reset()
+            agent_player_id = 0 if episode_idx < (num_episodes / 2) else 1
+
+            while not state.is_terminal():
+                if state.is_chance_node():
+                    outcomes = state.chance_outcomes()
+                    action_list, probs = zip(*outcomes)
+                    action = np.random.choice(action_list, p=probs)
+                    state.apply_action(int(action))
+                    continue
+
+                current_player = state.current_player()
+                if current_player == agent_player_id:
+                    if self._is_preflop(state):
+                        try:
+                            player_hands = state.to_struct().player_hands[agent_player_id]
+                            strength = self._estimate_preflop_hand_strength(player_hands)
+                        except Exception:
+                            strength = 0.5
+
+                        bin_idx = min(int(strength * num_bins), num_bins - 1)
+
+                        action = self._sample_model_action(state, current_player)
+                        try:
+                            action_text = str(state.action_to_string(current_player, int(action)))
+                        except Exception:
+                            action_text = ""
+                        try:
+                            pot_size = float(getattr(state.to_struct(), "pot_size", 0.0))
+                        except Exception:
+                            pot_size = 0.0
+                        bucket = self._classify_action_bucket(
+                            int(action),
+                            abstraction=abstraction,
+                            action_text=action_text,
+                            pot_size=pot_size,
+                        )
+                        if bucket in bins[bin_idx]:
+                            bins[bin_idx][bucket] += 1
+                        bin_counts[bin_idx] += 1
+                    else:
+                        action = self._sample_model_action(state, current_player)
+                else:
+                    action = int(opponent.step(state))
+                state.apply_action(action)
+
+        table = []
+        for i in range(num_bins):
+            total = max(1, bin_counts[i])
+            row = {
+                "equity_bin": f"{bin_edges[i]:.1f}-{bin_edges[i+1]:.1f}",
+                "count": bin_counts[i],
+            }
+            for label in action_labels:
+                row[f"freq_{label}"] = round(bins[i][label] / total, 4)
+            table.append(row)
+
+        return {
+            "hand_strength_table": table,
+            "num_episodes": num_episodes,
+            "num_bins": num_bins,
+            "seed": seed,
+        }
+
     def evaluate_nash_conv(self):
         model_policy = self._ModelPolicyAdapter(self)
         nash_conv_value = exploitability.nash_conv(
