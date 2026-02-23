@@ -1,0 +1,32 @@
+{
+  "branch": {
+    "checkpoint_path": "checkpoints/snapshots/stage_d/recovery/longrun_rebalance_34k_20260220_012455.pt",
+    "checkpoint_sha256": "ed8019e939192e7574bb3f06579391f39c970e001b0de8b645634c7318e07414",
+    "eval_screen_path": "logs/stage_d/eval/eval_longrun_rebalance_34k_screen_20260220_012455.json",
+    "failure_reason": "ci_floor_not_met",
+    "gate_log_path": "logs/stage_d/slurm/ah_stage_d_fchpa_gate_check_432657.out",
+    "metrics_path": "logs/metrics_20260220_062514.jsonl",
+    "promotion_pass": false
+  },
+  "champion": {
+    "checkpoint_path": "checkpoints/snapshots/interview_ready/interview_ready_1.pt",
+    "checkpoint_sha256": "a0dfc4b68a92a3d940e284a93fb6990ec0e7c01b3a0f027aa5c609d605d158c8",
+    "eval_cert_path": "logs/stage_d/eval/eval_selected_21k_auto_cert_20260216_161321.json"
+  },
+  "created_at_utc": "2026-02-20T19:10:17.420395+00:00",
+  "decision": "freeze_champion_do_not_promote_34k",
+  "goal": "interview_presentable_performance",
+  "headline": {
+    "branch_ci_floor_pass": false,
+    "branch_overall_pass_all": true,
+    "branch_promotion_pass": false,
+    "branch_stable": true,
+    "ci95_lower_delta_bb100_branch_minus_champion": -67.30285389684195
+  },
+  "interview_narrative": [
+    "Champion remains interview_ready_1 based on stronger certified CI-lower.",
+    "34k branch is retained as reproducible, stable, non-promoted evidence.",
+    "Promotion rule is strict: statistical gates plus CI-floor must pass."
+  ],
+  "title": "Stage D Goal Alignment: Freeze Champion, Do Not Promote 34k"
+}

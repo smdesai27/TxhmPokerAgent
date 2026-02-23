@@ -6,3 +6,7 @@ __pycache__/
 .env
 .idea/
 .vscode/
+
+# Large checkpoint files (>100MB)
+checkpoints/latest.pt
+checkpoints/snapshots/final_opt/
