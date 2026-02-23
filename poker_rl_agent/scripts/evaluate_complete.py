@@ -92,6 +92,16 @@ def build_profile_tiers(profile: str, episodes_per_seed: int, betting_abstractio
             {"name": "strong_50k", "iterations": 50000, "seeds": 3, "episodes_per_seed": eps},
         ]
 
+    if profile == "interview":
+        eps = int(episodes_per_seed)
+        return [
+            {"name": "weak_1k", "iterations": 1000, "seeds": 3, "episodes_per_seed": eps},
+            {"name": "default_cfr", "iterations": 5000, "seeds": 5, "episodes_per_seed": eps},
+            {"name": "competent_10k", "iterations": 10000, "seeds": 5, "episodes_per_seed": eps},
+            {"name": "near_equilibrium_50k", "iterations": 50000, "seeds": 3, "episodes_per_seed": eps},
+            {"name": "near_nash_100k", "iterations": 100000, "seeds": 3, "episodes_per_seed": eps},
+        ]
+
     # Standard profile (default).
     eps = int(episodes_per_seed)
     if is_fullgame:
@@ -423,7 +433,7 @@ def main():
     parser.add_argument("--config_file", type=str, default="configs/training_configs.yaml")
     parser.add_argument("--config_name", type=str, default="quadro_stage_b")
     parser.add_argument("--episodes_per_seed", type=int, default=5000)
-    parser.add_argument("--profile", type=str, choices=["quick", "standard", "exhaustive"], default="standard")
+    parser.add_argument("--profile", type=str, choices=["quick", "standard", "exhaustive", "interview"], default="standard")
     parser.add_argument("--holdout_seed_base", type=int, default=10042)
     parser.add_argument("--holdout_seed_count", type=int, default=5)
     parser.add_argument("--require_robust_ci", action="store_true")
@@ -741,6 +751,68 @@ def main():
             "winner_score": float(winner_score),
         },
     }
+
+    # -- Hand-strength correlation analysis --
+    try:
+        from poker_rl_agent.evaluation.baseline_agents import RandomAgent as _HSRandom
+        hs_opponent = _HSRandom()
+        hs_result = evaluator.evaluate_hand_strength_correlation(
+            opponent=hs_opponent,
+            num_episodes=2000,
+            seed=base_seed + 100,
+            num_bins=5,
+        )
+        report["hand_strength_correlation"] = hs_result
+        print("\n--- Hand-Strength Correlation (preflop) ---")
+        print(f"{'Bin':>12s} {'Count':>7s} {'Fold':>7s} {'Call':>7s} {'HalfP':>7s} {'PotR':>7s} {'AllIn':>7s}")
+        for row in hs_result["hand_strength_table"]:
+            print(
+                f"{row['equity_bin']:>12s} {row['count']:>7d} "
+                f"{row['freq_fold']:>7.3f} {row['freq_call_check']:>7.3f} "
+                f"{row['freq_half_pot']:>7.3f} {row['freq_pot_raise']:>7.3f} "
+                f"{row['freq_allin']:>7.3f}"
+            )
+    except Exception as exc:
+        print(f"Hand-strength correlation skipped: {exc}")
+
+    # -- W&B interview curve logging --
+    if args.profile == "interview" and solver_tiers:
+        try:
+            import wandb as _wandb
+            wandb_mode = os.environ.get("WANDB_MODE", "disabled")
+            if wandb_mode != "disabled":
+                _wandb.init(
+                    project=os.environ.get("WANDB_PROJECT", "alpha-holdem-poker"),
+                    tags=["eval", "interview"],
+                    reinit=True,
+                )
+                columns = ["mccfr_iterations", "bb_per_100_mean", "bb_per_100_stderr", "ci95_lower"]
+                table_data = []
+                for tier_row in solver_tiers:
+                    tier_agg = tier_row.get("aggregate", {}).get("bb_per_100", {})
+                    iters = int(tier_row.get("iterations", 0))
+                    mean_bb = float(tier_agg.get("mean", 0.0))
+                    stderr_bb = float(tier_agg.get("stderr", 0.0))
+                    ci_lower = float(tier_row.get("ci95_lower_bb100", 0.0))
+                    table_data.append([iters, mean_bb, stderr_bb, ci_lower])
+                    _wandb.log({f"eval/bb100_mccfr_{iters}": mean_bb})
+                wt = _wandb.Table(columns=columns, data=table_data)
+                _wandb.log({"eval/winrate_vs_cfr_curve": wt})
+
+                # Log hand-strength table if available
+                if "hand_strength_correlation" in report:
+                    hs_cols = ["equity_bin", "count", "freq_fold", "freq_call_check", "freq_half_pot", "freq_pot_raise", "freq_allin"]
+                    hs_data = [
+                        [r.get(c, 0) for c in hs_cols]
+                        for r in report["hand_strength_correlation"]["hand_strength_table"]
+                    ]
+                    hs_table = _wandb.Table(columns=hs_cols, data=hs_data)
+                    _wandb.log({"eval/hand_strength_correlation": hs_table})
+
+                _wandb.finish()
+                print("W&B interview curve logged.")
+        except Exception as exc:
+            print(f"W&B interview logging skipped: {exc}")
 
     output_json = args.output_json
     if not output_json:
