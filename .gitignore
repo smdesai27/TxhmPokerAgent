@@ -10,3 +10,5 @@ __pycache__/
 # Large checkpoint files (>100MB)
 checkpoints/latest.pt
 checkpoints/snapshots/final_opt/
+checkpoints/best_eval_final_optimization.pt
+checkpoints/best_eval_final_optimization_low_temp.pt
