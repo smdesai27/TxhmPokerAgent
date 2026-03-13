@@ -37,6 +37,7 @@ class StateEncoder:
             return [num_actions]
 
         try:
+            #make a new game and replay the hisotry to extract legal actions not chance nodes.
             replay_state = state.get_game().new_initial_state()
         except Exception:
             # Conservative fallback if game handle is unavailable.
@@ -78,6 +79,7 @@ class StateEncoder:
         action_seq = self._extract_decision_history(state, num_actions)
         action_seq_tensor = torch.tensor(action_seq, dtype=torch.long, device=self.device)
 
+        #set the non legal action to zeros
         legal_mask = torch.zeros(num_actions, dtype=torch.float32, device=self.device)
         if not state.is_terminal() and not state.is_chance_node():
             for action in state.legal_actions():

@@ -18,7 +18,7 @@ from poker_rl_agent.evaluation.baseline_agents import AlwaysCallAgent, PassiveCa
 from poker_rl_agent.evaluation.evaluator import Evaluator
 from poker_rl_agent.models.alpha_holdem_net import AlphaHoldemNetwork
 from poker_rl_agent.models.model_utils import masked_logits
-from poker_rl_agent.training.action_curriculum import FullgameActionCurriculum
+from poker_rl_agent.training.proto_fullgame_action_curriculum import FullgameActionCurriculum
 from poker_rl_agent.training.checkpointing import save_checkpoint
 from poker_rl_agent.training.league_manager import LeagueManager
 from poker_rl_agent.training.trainer import Trainer

@@ -1,5 +1,4 @@
-import copy
-import random
+
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -53,7 +52,7 @@ class LeagueManager:
         self._next_id += 1
         self.entries.append(entry)
 
-        # Keep top-K by score first, then rating.
+        # keep top-K by score first, then rating.
         self.entries.sort(key=lambda e: (e.score, e.rating), reverse=True)
         if len(self.entries) > self.k_best:
             self.entries = self.entries[: self.k_best]
@@ -70,6 +69,7 @@ class LeagueManager:
         return None
 
     def sample_opponent(self) -> Optional[LeagueEntry]:
+        #pfsp sampling based on ratings (form alphastar), stronger = more likely to sample
         if not self.entries:
             return None
 

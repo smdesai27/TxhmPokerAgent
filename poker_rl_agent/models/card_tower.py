@@ -6,6 +6,7 @@ class CardTower(nn.Module):
     def __init__(self, card_embedding_dim=64, hidden_dim=256, num_layers=3):
         super().__init__()
         # 52 standard cards + unknown token.
+        # we need the embedding to share the same embedding space between the whole and commumity cards. 
         self.card_embedding = nn.Embedding(53, card_embedding_dim)
         self.input_dim = 7 * card_embedding_dim  # 2 hole + 5 community
 
@@ -24,7 +25,8 @@ class CardTower(nn.Module):
             hole_cards = hole_cards.unsqueeze(0)
         if community_cards.dim() == 1:
             community_cards = community_cards.unsqueeze(0)
-
+        
+        #same embedding
         hc_emb = self.card_embedding(hole_cards)
         cc_emb = self.card_embedding(community_cards)
 
@@ -32,4 +34,5 @@ class CardTower(nn.Module):
             hc_emb.reshape(hc_emb.size(0), -1),
             cc_emb.reshape(cc_emb.size(0), -1),
         ], dim=1)
+        #simple MLP for now, can use tformer but KQ spacial relatn could be unstable.
         return self.mlp(x)

@@ -3,6 +3,7 @@ import random
 import torch
 
 class ReplayBuffer:
+    "unused : legacy replay buffer for DeepCFR. Kept for reference but not used in current training loop."
     def __init__(self, capacity: int = 100000):
         self.buffer = collections.deque(maxlen=capacity)
 

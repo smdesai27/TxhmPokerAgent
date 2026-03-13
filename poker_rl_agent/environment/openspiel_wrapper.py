@@ -29,6 +29,7 @@ class PokerEnv:
         self.state = None
 
     @staticmethod
+    # fun bug; kept on crashing bc string was "fcpha" instead of "fchpa"
     def _normalize_betting_abstraction(raw: str) -> str:
         abstraction = str(raw).lower().strip()
         if abstraction == "fcpha":
@@ -98,8 +99,6 @@ class PokerEnv:
             return game, abstraction
         errors.append(f"{abstraction}: {error}")
 
-        # Some OpenSpiel builds support fchpa through universal_poker parameters
-        # even when hunl_game_string helper support is inconsistent.
         if abstraction == "fchpa":
             game, error = self._try_load_fchpa_from_params()
             if game is not None:

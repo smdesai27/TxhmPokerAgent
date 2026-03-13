@@ -24,7 +24,7 @@ def masked_logits(policy_logits: torch.Tensor, legal_action_mask: torch.Tensor) 
     else:
         mask = legal_action_mask
     invalid = ~mask
-    # Use dtype-safe floor value so mixed-precision (fp16/bf16) doesn't overflow.
+    # use dtype-safe floor value so mixed-precision (fp16/bf16) doesn't overflow.
     if policy_logits.dtype.is_floating_point:
         floor = torch.finfo(policy_logits.dtype).min
     else:

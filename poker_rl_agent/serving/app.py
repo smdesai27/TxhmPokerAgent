@@ -8,6 +8,7 @@ from pathlib import Path
 import torch
 import yaml
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -75,12 +76,12 @@ async def lifespan(app: FastAPI):
     global game_manager
 
     args = _cli_args
-    checkpoint = args.get("checkpoint", "checkpoints/latest.pt")
-    config_file = args.get("config_file", "configs/training_configs.yaml")
-    config_name = args.get("config_name", "default")
-    game_mode = args.get("game_mode", "fcpa")
-    bot_policy = args.get("bot_policy", "sample")
-    policy_temperature = float(args.get("policy_temperature", 1.0))
+    checkpoint = args.get("checkpoint") or os.environ.get("CHECKPOINT_PATH", "checkpoints/latest.pt")
+    config_file = args.get("config_file") or os.environ.get("CONFIG_FILE", "configs/training_configs.yaml")
+    config_name = args.get("config_name") or os.environ.get("CONFIG_NAME", "default")
+    game_mode = args.get("game_mode") or os.environ.get("GAME_MODE", "fchpa")
+    bot_policy = args.get("bot_policy") or os.environ.get("BOT_POLICY", "sample")
+    policy_temperature = float(args.get("policy_temperature") or os.environ.get("POLICY_TEMPERATURE", "1.0"))
 
     config = _load_config(config_file, config_name)
     config.DEVICE = "cpu"
@@ -150,6 +151,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AlphaHoldem Poker", lifespan=lifespan)
+
+cors_origins = os.environ.get("CORS_ORIGINS", "")
+if cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins.split(","),
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 

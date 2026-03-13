@@ -11,11 +11,13 @@ class SelfPlayWorker:
     """Collects on-policy trajectories for PPO self-play."""
 
     def __init__(self, env: PokerEnv, device="cpu", max_action_history: int = 64):
+        #use poker env from trainer
         self.env = env
         self.device = device
         self.encoder = StateEncoder(device="cpu", max_action_history=max_action_history)
 
     def _to_model_device(self, state_dict):
+        # one encoded state to cpu
         return {
             k: (v.unsqueeze(0).to(self.device) if v.dim() > 0 else v.to(self.device))
             for k, v in state_dict.items()
@@ -72,6 +74,7 @@ class SelfPlayWorker:
         if opponent_model is None and opponent_agent is None:
             opponent_model = policy_model
         if train_player is None:
+            #changes the seat randomly for variety
             train_player = np.random.choice([0, 1])
 
         state = self.env.reset()
@@ -98,6 +101,7 @@ class SelfPlayWorker:
                 current_player,
                 num_actions=self.env.num_actions(),
             )
+            # so the player cannot see hole cards
             encoded = self._apply_curriculum_mask(
                 curriculum=curriculum,
                 state=state,
@@ -121,6 +125,7 @@ class SelfPlayWorker:
                         "action": action,
                         "log_prob": log_prob,
                         "value": value,
+                        #only update rewards at end
                         "reward": 0.0,
                         "done": 0.0,
                     }

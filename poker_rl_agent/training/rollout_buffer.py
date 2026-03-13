@@ -35,11 +35,12 @@ class RolloutBuffer:
         log_prob: float,
         value: float,
     ):
-        # Store on CPU to keep rollout memory compact.
+        # store on CPU to keep rollout memory compact.
         state_cpu = {
             k: (v.detach().cpu() if torch.is_tensor(v) else v)
             for k, v in state.items()
         }
+        # ensure action is int and done is float for consistency
         self.transitions.append(
             Transition(
                 state=state_cpu,
@@ -62,6 +63,7 @@ class RolloutBuffer:
         next_value = 0.0
 
         for t in reversed(range(n)):
+            #make sure zero out the next value if done
             if t < n - 1:
                 next_value = values[t + 1] * (1.0 - dones[t])
             else:
@@ -82,6 +84,9 @@ class RolloutBuffer:
         collated["scalars"] = torch.stack([s["scalars"] for s in states], dim=0)
         collated["legal_action_mask"] = torch.stack([s["legal_action_mask"] for s in states], dim=0)
 
+
+        # since action history since its variable lengtg, we need to pad it. 
+        # we can use num_actions since we init the LSTM with it as the pad_token
         action_histories = [s["action_history"] for s in states]
         num_actions = int(collated["legal_action_mask"].shape[1])
         collated["action_history"] = pad_sequence(

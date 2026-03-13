@@ -22,7 +22,7 @@ from ..evaluation.baseline_agents import (
 from ..evaluation.evaluator import Evaluator
 from ..models.alpha_holdem_net import AlphaHoldemNetwork
 from ..models.model_utils import masked_logits
-from ..training.action_curriculum import FullgameActionCurriculum
+from .proto_fullgame_action_curriculum import FullgameActionCurriculum
 from ..training.checkpointing import load_checkpoint, save_checkpoint
 from ..training.league_manager import LeagueManager
 from ..training.rollout_buffer import RolloutBuffer
@@ -33,9 +33,11 @@ from ..utils.logging_utils import init_wandb, log_metrics, log_metrics_local
 class Trainer:
     def __init__(self, config=None):
         self.config = config if config else Config()
+        #for legaacy support 
         if hasattr(self.config, "sync_legacy_fields"):
             self.config.sync_legacy_fields()
 
+        # add metadata field for run ID if not already set, used for logging and checkpointing
         if not getattr(self.config, "RUN_ID", ""):
             self.config.RUN_ID = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         self.run_id = self.config.RUN_ID
@@ -43,21 +45,26 @@ class Trainer:
         self._set_seed(self.config.SEED)
         strict_abstraction = bool(getattr(self.config, "STRICT_ABSTRACTION", True))
 
+        # initialize environment first to resolve betting abstraction and action space
         self.env = PokerEnv(
             game_name=self.config.GAME_NAME,
             env_preset=self.config.ENV_PRESET,
             betting_abstraction=self.config.BETTING_ABSTRACTION,
             strict_abstraction=strict_abstraction,
         )
+        #both abs saved for PokerEnv
         self.requested_betting_abstraction = self.env.get_requested_betting_abstraction()
         self.effective_betting_abstraction = self.env.get_effective_betting_abstraction()
         self.config.BETTING_ABSTRACTION = self.env.get_effective_betting_abstraction()
+        # pull num actions from the enviorment for consistancy 
         self.num_actions = self.env.num_actions()
 
+        # build modle and optimizer
         self.model = AlphaHoldemNetwork(self.num_actions, self.config).to(self.device)
-        self.optimizer = optim.Adam(
+        self.optimizer = optim.AdamW(
             self.model.parameters(),
             lr=self.config.LR,
+            # to prevent overfitting
             weight_decay=self.config.WEIGHT_DECAY,
         )
         self._base_lr = float(self.config.LR)
@@ -65,17 +72,12 @@ class Trainer:
         self._kl_low_streak = 0
 
         self.scheduler = None
-        if self.config.LR_SCHEDULER == "plateau":
-            self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-                self.optimizer,
-                mode="max",
-                factor=0.5,
-                patience=10,
-            )
 
+        # run bp on float32 on cuda
         self.amp_enabled = self.config.AMP and str(self.device).startswith("cuda")
         self.scaler = torch.amp.GradScaler("cuda", enabled=self.amp_enabled)
 
+        # initialize a diff environment for the worker
         worker_env = PokerEnv(
             game_name=self.config.GAME_NAME,
             env_preset=self.config.ENV_PRESET,
@@ -88,11 +90,13 @@ class Trainer:
             max_action_history=self.config.MAX_ACTION_HISTORY,
         )
         self.curriculum = None
+        # for future fullgame support 
         if (
             str(self.config.BETTING_ABSTRACTION).lower() == "fullgame"
             and bool(getattr(self.config, "FULLGAME_CURRICULUM_ENABLE", True))
         ):
             self.curriculum = FullgameActionCurriculum(self.config)
+
         self.rollout_buffer = RolloutBuffer()
 
         self.league = LeagueManager(
@@ -101,17 +105,22 @@ class Trainer:
             k_factor=self.config.LEAGUE_K_FACTOR,
             pfsp_beta=self.config.PFSP_BETA,
         )
+        #add inttial model to make sure league is never empty
         self.league.add_snapshot(self.model, step=0, score=0.0)
+        # cache for opponent models to avoid redundant loading 
         self._opponent_cache = {}
         self._exploit_agents = self._build_exploit_agents()
         self._style_target = self._load_style_target_profile()
 
         self.evaluator = Evaluator(self.model, self.config, device=self.device)
         self.global_step = 0
+        #for checkpointing best model
         self.best_eval_score = float("-inf")
         self.best_eval_step = 0
 
     @staticmethod
+    # set all seeds together as good practice 
+    # python for sampling agents, np for adv calcs and torch for model
     def _set_seed(seed: int):
         random.seed(seed)
         np.random.seed(seed)
@@ -127,11 +136,11 @@ class Trainer:
         return float(start + (end - start) * ratio)
 
     def _effective_schedule_progress(self, iteration: int, start_step: int) -> float:
-        """Returns the progress signal used for exploration schedules.
-
+        """
         By default this is relative to the continuation window (resume -> target),
         so resumed runs can still apply start/end schedules meaningfully.
         """
+        #for seperate resumption logic
         if bool(getattr(self.config, "SCHEDULE_RELATIVE_TO_RESUME", True)):
             total_span = max(1, int(self.config.CFR_ITERATIONS) - int(start_step))
             return float(iteration + 1 - int(start_step)) / float(total_span)
@@ -141,6 +150,7 @@ class Trainer:
         start = float(getattr(self.config, "SELF_PLAY_TEMPERATURE_START", 1.0))
         end = float(getattr(self.config, "SELF_PLAY_TEMPERATURE_END", 1.0))
         decay = float(getattr(self.config, "SELF_PLAY_TEMPERATURE_DECAY_FRAC", 1.0))
+        #calc temp with linear decay
         return max(1e-3, self._linear_schedule(start, end, progress, decay))
 
     def _entropy_coef(self, progress: float) -> float:
@@ -149,13 +159,13 @@ class Trainer:
         decay = float(getattr(self.config, "PPO_ENTROPY_DECAY_FRAC", 1.0))
         return max(0.0, self._linear_schedule(start, end, progress, decay))
 
-    def _style_reg_coef(self, progress: float) -> float:
-        if not bool(getattr(self.config, "STYLE_REG_ENABLE", False)):
-            return 0.0
-        start = float(getattr(self.config, "STYLE_REG_COEF_START", 0.0))
-        end = float(getattr(self.config, "STYLE_REG_COEF_END", 0.0))
-        decay = float(getattr(self.config, "STYLE_REG_DECAY_FRAC", 1.0))
-        return max(0.0, self._linear_schedule(start, end, progress, decay))
+    # def _style_reg_coef(self, progress: float) -> float:
+    #     if not bool(getattr(self.config, "STYLE_REG_ENABLE", False)):
+    #         return 0.0
+    #     start = float(getattr(self.config, "STYLE_REG_COEF_START", 0.0))
+    #     end = float(getattr(self.config, "STYLE_REG_COEF_END", 0.0))
+    #     decay = float(getattr(self.config, "STYLE_REG_DECAY_FRAC", 1.0))
+    #     return max(0.0, self._linear_schedule(start, end, progress, decay))
 
     def _resolve_opponent_mix(self):
         """Resolves league/random/exploit ratios with backwards-compatible fallback."""
@@ -163,6 +173,7 @@ class Trainer:
         random_prob = float(getattr(self.config, "RANDOM_OPPONENT_PROB", 0.0))
         exploit_prob = float(getattr(self.config, "EXPLOIT_OPPONENT_PROB", 0.0))
 
+        # defensive defaulting to avoid silent misconfg that lead to no league training
         if league_prob <= 0.0 and random_prob <= 0.0 and exploit_prob <= 0.0:
             random_prob = float(getattr(self.config, "LEAGUE_RANDOM_OPPONENT_PROB", 0.0))
             random_prob = min(max(random_prob, 0.0), 1.0)
@@ -206,58 +217,60 @@ class Trainer:
             if agent is not None:
                 agents.append(agent)
         if not agents:
+            # defensive defualt to make sure pool is never empty
             agents.append(AlwaysCallAgent())
         return agents
 
-    def _load_style_target_profile(self):
-        if not bool(getattr(self.config, "STYLE_REG_ENABLE", False)):
-            return None
-        if not bool(getattr(self.config, "STYLE_TARGET_USE_SOLVER_PROFILE", True)):
-            return None
-        path = str(getattr(self.config, "STYLE_TARGET_PROFILE_PATH", "")).strip()
-        if not path:
-            return None
-        if not os.path.exists(path):
-            print(f"Style target profile not found, disabling style regularizer: {path}", flush=True)
-            return None
+    # # not used / style reg is legacy 
+    # def _load_style_target_profile(self):
+    #     if not bool(getattr(self.config, "STYLE_REG_ENABLE", False)):
+    #         return None
+    #     if not bool(getattr(self.config, "STYLE_TARGET_USE_SOLVER_PROFILE", True)):
+    #         return None
+    #     path = str(getattr(self.config, "STYLE_TARGET_PROFILE_PATH", "")).strip()
+    #     if not path:
+    #         return None
+    #     if not os.path.exists(path):
+    #         print(f"Style target profile not found, disabling style regularizer: {path}", flush=True)
+    #         return None
 
-        try:
-            with open(path, "r", encoding="utf-8") as fh:
-                payload = json.load(fh)
-        except Exception as exc:
-            print(f"Failed loading style target profile '{path}': {exc}", flush=True)
-            return None
+    #     try:
+    #         with open(path, "r", encoding="utf-8") as fh:
+    #             payload = json.load(fh)
+    #     except Exception as exc:
+    #         print(f"Failed loading style target profile '{path}': {exc}", flush=True)
+    #         return None
 
-        target = payload.get("target", {})
-        if not isinstance(target, dict):
-            target = {}
-        keys = ["fold", "call_check", "half_pot", "pot_raise", "allin"]
-        values = np.array([float(target.get(k, 0.0)) for k in keys], dtype=np.float64)
-        values = np.clip(values, 0.0, None)
-        if values.sum() <= 0.0:
-            print(f"Style target profile has empty target distribution, disabling: {path}", flush=True)
-            return None
-        values = values / values.sum()
+    #     target = payload.get("target", {})
+    #     if not isinstance(target, dict):
+    #         target = {}
+    #     keys = ["fold", "call_check", "half_pot", "pot_raise", "allin"]
+    #     values = np.array([float(target.get(k, 0.0)) for k in keys], dtype=np.float64)
+    #     values = np.clip(values, 0.0, None)
+    #     if values.sum() <= 0.0:
+    #         print(f"Style target profile has empty target distribution, disabling: {path}", flush=True)
+    #         return None
+    #     values = values / values.sum()
 
-        target_pot_given_legal = float(
-            payload.get(
-                "target/preflop_choose_given_legal/pot_raise",
-                payload.get("diagnostics/preflop_choose_given_legal/pot_raise", 0.0),
-            )
-        )
-        target_half_given_legal = float(
-            payload.get(
-                "target/preflop_choose_given_legal/half_pot",
-                payload.get("diagnostics/preflop_choose_given_legal/half_pot", 0.0),
-            )
-        )
+    #     target_pot_given_legal = float(
+    #         payload.get(
+    #             "target/preflop_choose_given_legal/pot_raise",
+    #             payload.get("diagnostics/preflop_choose_given_legal/pot_raise", 0.0),
+    #         )
+    #     )
+    #     target_half_given_legal = float(
+    #         payload.get(
+    #             "target/preflop_choose_given_legal/half_pot",
+    #             payload.get("diagnostics/preflop_choose_given_legal/half_pot", 0.0),
+    #         )
+    #     )
 
-        return {
-            "path": path,
-            "target_dist": values.astype(np.float32),
-            "target_pot_given_legal": max(0.0, target_pot_given_legal),
-            "target_half_given_legal": max(0.0, target_half_given_legal),
-        }
+    #     return {
+    #         "path": path,
+    #         "target_dist": values.astype(np.float32),
+    #         "target_pot_given_legal": max(0.0, target_pot_given_legal),
+    #         "target_half_given_legal": max(0.0, target_half_given_legal),
+    #     }
 
     def _preflop_bucket_indices(self):
         abstraction = str(getattr(self.config, "BETTING_ABSTRACTION", "fcpa")).lower()
@@ -307,6 +320,7 @@ class Trainer:
         high_threshold = target_kl * high_mult
         low_threshold = target_kl * low_mult
 
+        #for logging and metrics, event = 1 for growth, -1 for decay, 0 for no change
         event = 0.0
         if avg_kl > high_threshold:
             self._lr_multiplier = max(0.1, self._lr_multiplier * decay)
@@ -321,6 +335,7 @@ class Trainer:
         else:
             self._kl_low_streak = 0
 
+        # adjust lr based on over or under shooting kl targets
         if event != 0.0:
             self._apply_lr_multiplier()
 
@@ -335,88 +350,88 @@ class Trainer:
             return advantages
         return torch.clamp(advantages, min=-adv_clip, max=adv_clip)
 
-    def _compute_style_regularizer(
-        self,
-        probs: torch.Tensor,
-        legal_mask: torch.Tensor,
-        scalars: torch.Tensor,
-    ):
-        if not bool(getattr(self.config, "STYLE_REG_ENABLE", False)):
-            zero = probs.new_zeros(())
-            return zero, zero, zero
-        if self._style_target is None:
-            zero = probs.new_zeros(())
-            return zero, zero, zero
+    # def _compute_style_regularizer(
+    #     self,
+    #     probs: torch.Tensor,
+    #     legal_mask: torch.Tensor,
+    #     scalars: torch.Tensor,
+    # ):
+    #     if not bool(getattr(self.config, "STYLE_REG_ENABLE", False)):
+    #         zero = probs.new_zeros(())
+    #         return zero, zero, zero
+    #     if self._style_target is None:
+    #         zero = probs.new_zeros(())
+    #         return zero, zero, zero
 
-        abstraction = str(getattr(self.config, "BETTING_ABSTRACTION", "fcpa")).lower()
-        if abstraction not in {"fchpa", "fcpha"}:
-            zero = probs.new_zeros(())
-            return zero, zero, zero
+    #     abstraction = str(getattr(self.config, "BETTING_ABSTRACTION", "fcpa")).lower()
+    #     if abstraction not in {"fchpa", "fcpha"}:
+    #         zero = probs.new_zeros(())
+    #         return zero, zero, zero
 
-        if scalars.dim() != 2 or scalars.shape[1] < 9:
-            zero = probs.new_zeros(())
-            return zero, zero, zero
+    #     if scalars.dim() != 2 or scalars.shape[1] < 9:
+    #         zero = probs.new_zeros(())
+    #         return zero, zero, zero
 
-        preflop_mask = scalars[:, 5] > 0.5
-        if not bool(preflop_mask.any().item()):
-            zero = probs.new_zeros(())
-            return zero, zero, zero
+    #     preflop_mask = scalars[:, 5] > 0.5
+    #     if not bool(preflop_mask.any().item()):
+    #         zero = probs.new_zeros(())
+    #         return zero, zero, zero
 
-        preflop_probs = probs[preflop_mask]
-        preflop_legal = legal_mask[preflop_mask]
-        preflop_fraction = preflop_probs.shape[0] / max(1, probs.shape[0])
+    #     preflop_probs = probs[preflop_mask]
+    #     preflop_legal = legal_mask[preflop_mask]
+    #     preflop_fraction = preflop_probs.shape[0] / max(1, probs.shape[0])
 
-        bucket_idx = self._preflop_bucket_indices()
-        ordered = [
-            bucket_idx["fold"],
-            bucket_idx["call_check"],
-            bucket_idx["half_pot"],
-            bucket_idx["pot_raise"],
-            bucket_idx["allin"],
-        ]
-        bucket_probs = []
-        for idx in ordered:
-            if idx is None or idx >= preflop_probs.shape[1]:
-                bucket_probs.append(preflop_probs.new_zeros((preflop_probs.shape[0],)))
-            else:
-                bucket_probs.append(preflop_probs[:, idx])
-        pred_dist = torch.stack(bucket_probs, dim=1).mean(dim=0)
-        pred_dist = pred_dist / torch.clamp(pred_dist.sum(), min=1e-8)
-        pred_dist = torch.clamp(pred_dist, min=1e-8, max=1.0)
+    #     bucket_idx = self._preflop_bucket_indices()
+    #     ordered = [
+    #         bucket_idx["fold"],
+    #         bucket_idx["call_check"],
+    #         bucket_idx["half_pot"],
+    #         bucket_idx["pot_raise"],
+    #         bucket_idx["allin"],
+    #     ]
+    #     bucket_probs = []
+    #     for idx in ordered:
+    #         if idx is None or idx >= preflop_probs.shape[1]:
+    #             bucket_probs.append(preflop_probs.new_zeros((preflop_probs.shape[0],)))
+    #         else:
+    #             bucket_probs.append(preflop_probs[:, idx])
+    #     pred_dist = torch.stack(bucket_probs, dim=1).mean(dim=0)
+    #     pred_dist = pred_dist / torch.clamp(pred_dist.sum(), min=1e-8)
+    #     pred_dist = torch.clamp(pred_dist, min=1e-8, max=1.0)
 
-        target_dist = torch.as_tensor(
-            self._style_target["target_dist"],
-            device=pred_dist.device,
-            dtype=pred_dist.dtype,
-        )
-        target_dist = target_dist / torch.clamp(target_dist.sum(), min=1e-8)
-        target_dist = torch.clamp(target_dist, min=1e-8, max=1.0)
+    #     target_dist = torch.as_tensor(
+    #         self._style_target["target_dist"],
+    #         device=pred_dist.device,
+    #         dtype=pred_dist.dtype,
+    #     )
+    #     target_dist = target_dist / torch.clamp(target_dist.sum(), min=1e-8)
+    #     target_dist = torch.clamp(target_dist, min=1e-8, max=1.0)
 
-        style_kl = torch.sum(target_dist * (torch.log(target_dist) - torch.log(pred_dist)))
+    #     style_kl = torch.sum(target_dist * (torch.log(target_dist) - torch.log(pred_dist)))
 
-        pot_idx = bucket_idx["pot_raise"]
-        half_idx = bucket_idx["half_pot"]
-        pot_prob_given_legal = pred_dist.new_zeros(())
-        half_prob_given_legal = pred_dist.new_zeros(())
+    #     pot_idx = bucket_idx["pot_raise"]
+    #     half_idx = bucket_idx["half_pot"]
+    #     pot_prob_given_legal = pred_dist.new_zeros(())
+    #     half_prob_given_legal = pred_dist.new_zeros(())
 
-        if pot_idx is not None and pot_idx < preflop_probs.shape[1]:
-            pot_legal = preflop_legal[:, pot_idx] > 0.5
-            if bool(pot_legal.any().item()):
-                pot_prob_given_legal = preflop_probs[pot_legal, pot_idx].mean()
-        if half_idx is not None and half_idx < preflop_probs.shape[1]:
-            half_legal = preflop_legal[:, half_idx] > 0.5
-            if bool(half_legal.any().item()):
-                half_prob_given_legal = preflop_probs[half_legal, half_idx].mean()
+    #     if pot_idx is not None and pot_idx < preflop_probs.shape[1]:
+    #         pot_legal = preflop_legal[:, pot_idx] > 0.5
+    #         if bool(pot_legal.any().item()):
+    #             pot_prob_given_legal = preflop_probs[pot_legal, pot_idx].mean()
+    #     if half_idx is not None and half_idx < preflop_probs.shape[1]:
+    #         half_legal = preflop_legal[:, half_idx] > 0.5
+    #         if bool(half_legal.any().item()):
+    #             half_prob_given_legal = preflop_probs[half_legal, half_idx].mean()
 
-        target_pot = float(self._style_target.get("target_pot_given_legal", 0.0))
-        target_half = float(self._style_target.get("target_half_given_legal", 0.0))
-        hinge_coef = max(float(getattr(self.config, "STYLE_POT_HINGE_COEF", 0.5)), 0.0)
+    #     target_pot = float(self._style_target.get("target_pot_given_legal", 0.0))
+    #     target_half = float(self._style_target.get("target_half_given_legal", 0.0))
+    #     hinge_coef = max(float(getattr(self.config, "STYLE_POT_HINGE_COEF", 0.5)), 0.0)
 
-        pot_hinge = torch.relu(probs.new_tensor(target_pot) - pot_prob_given_legal)
-        half_hinge = torch.relu(probs.new_tensor(target_half) - half_prob_given_legal)
-        style_hinge = pot_hinge + (0.5 * half_hinge)
+    #     pot_hinge = torch.relu(probs.new_tensor(target_pot) - pot_prob_given_legal)
+    #     half_hinge = torch.relu(probs.new_tensor(target_half) - half_prob_given_legal)
+    #     style_hinge = pot_hinge + (0.5 * half_hinge)
 
-        return style_kl, (hinge_coef * style_hinge), probs.new_tensor(float(preflop_fraction))
+    #     return style_kl, (hinge_coef * style_hinge), probs.new_tensor(float(preflop_fraction))
 
     def _compute_explained_var(self, value_pred: torch.Tensor, scaled_returns: torch.Tensor):
         var_floor = max(float(getattr(self.config, "EXPLAINED_VAR_VAR_FLOOR", 1e-4)), 0.0)
@@ -428,6 +443,7 @@ class Trainer:
 
     def _build_model_clone(self):
         model = AlphaHoldemNetwork(self.num_actions, self.config).to(self.device)
+        #never train opponent models
         model.eval()
         return model
 
@@ -445,6 +461,7 @@ class Trainer:
         self.rollout_buffer.clear()
         returns = []
 
+        # set minimum and target rollouts based on config, with defensive defaults to ensure training progresses and OOM protection
         min_transitions = max(1, int(getattr(self.config, "MIN_ROLLOUT_TRANSITIONS", 1)))
         target_episodes = max(1, int(self.config.ROLLOUT_EPISODES))
         max_episodes = max(target_episodes, min_transitions * 4)
@@ -454,6 +471,7 @@ class Trainer:
         exploit_opponent_episodes = 0
         league_opponent_episodes = 0
 
+        #for metrics
         preflop_total = 0
         preflop_fold = 0
         preflop_call_check = 0
@@ -477,6 +495,7 @@ class Trainer:
             len(self.rollout_buffer) < min_transitions and episodes_collected < max_episodes
         ):
             sampled = random.random()
+            #distribtion is a true prob and agent probabs are mutally exculsive
             use_random_opponent = sampled < mix["random"]
             use_exploit_opponent = (sampled >= mix["random"]) and (
                 sampled < (mix["random"] + mix["exploit"])
@@ -492,6 +511,7 @@ class Trainer:
                 exploit_opponent_episodes += 1
             else:
                 opponent_entry = self.league.sample_opponent()
+                #defensive check to make sure we always have an opponent model, should never be None due to initial snapshot but just in case
                 opponent_model = self.model if opponent_entry is None else self._get_opponent_model(opponent_entry)
                 league_opponent_episodes += 1
 
@@ -506,6 +526,8 @@ class Trainer:
                 policy_temperature=policy_temperature,
             )
 
+            #record rollout transitions in dict
+            #for metrics
             for transition in episode_transitions:
                 self.rollout_buffer.add(
                     state=transition["state"],
@@ -555,6 +577,7 @@ class Trainer:
 
             returns.append(final_return)
 
+            # elo updates for league opponents based on eps result
             if opponent_entry is not None:
                 if final_return > 0:
                     result = 1.0
@@ -633,6 +656,7 @@ class Trainer:
         return {k: v.to(self.device) for k, v in batch_states.items()}
 
     def _ppo_update(self, entropy_coef: float = None, style_coef: float = None):
+        # no eps collected
         if len(self.rollout_buffer) == 0:
             return {
                 "train/updates": 0,
@@ -659,11 +683,13 @@ class Trainer:
             }
 
         self.model.train()
+        #get advs and returns from buffer
         advantages, returns = self.rollout_buffer.compute_advantages(
             gamma=self.config.PPO_GAMMA,
             gae_lambda=self.config.PPO_GAE_LAMBDA,
         )
 
+        #normalize and clip advs to stabalize updates
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         advantages = self._clip_advantages(advantages)
         value_scale = max(float(getattr(self.config, "VALUE_TARGET_SCALE", 1.0)), 1e-6)
@@ -672,9 +698,9 @@ class Trainer:
         entropy_coef_effective = float(
             self.config.PPO_ENTROPY_COEF if entropy_coef is None else entropy_coef
         )
-        style_coef_effective = float(
-            self._style_reg_coef(1.0) if style_coef is None else style_coef
-        )
+        # style_coef_effective = float(
+        #     self._style_reg_coef(1.0) if style_coef is None else style_coef
+        # )
         skip_nonfinite_grad = bool(getattr(self.config, "SKIP_NONFINITE_GRAD", True))
         kl_spike_threshold = max(float(self.config.PPO_TARGET_KL), 1e-8) * max(
             float(getattr(self.config, "PPO_ADAPTIVE_KL_HIGH", 2.0)),
@@ -701,11 +727,13 @@ class Trainer:
         nonfinite_grad_skips = 0
         nonfinite_loss_batches = 0
 
+        # dealloc to save memory, will be reallocated in loop as needed
         self.optimizer.zero_grad(set_to_none=True)
         grad_accum = max(1, int(self.config.GRAD_ACCUM_STEPS))
         accum = 0
         early_stop = False
 
+        #ppo update with multiple epochs and minibatches, with early stopping based on kl spikes
         for _ in range(self.config.PPO_EPOCHS):
             for batch in self.rollout_buffer.iterate_minibatches(
                 minibatch_size=self.config.PPO_MINIBATCH_SIZE,
@@ -720,7 +748,9 @@ class Trainer:
                 target_returns = batch["returns"].to(self.device)
                 scaled_returns = target_returns / value_scale
 
+                #amp to autocast to fp16 for faster trianign and lower memory usage, 
                 with torch.amp.autocast(device_type="cuda", enabled=self.amp_enabled):
+                    # fw pass through model to get new log probs, entropy, and value preds
                     outputs = self.model(states)
                     logits = masked_logits(outputs["policy_logits"], states["legal_action_mask"])
                     dist = Categorical(logits=logits)
@@ -728,6 +758,7 @@ class Trainer:
                     new_log_probs = dist.log_prob(actions)
                     entropy = dist.entropy().mean()
 
+                    #PPO loss calc w/ clipping and huber
                     ratio = torch.exp(new_log_probs - old_log_probs)
                     surr1 = ratio * adv
                     surr2 = torch.clamp(
@@ -735,10 +766,13 @@ class Trainer:
                         1.0 - self.config.PPO_CLIP_EPS,
                         1.0 + self.config.PPO_CLIP_EPS,
                     ) * adv
+                    #batch to scalar with mean and then clip(based on percentage of batch)
                     policy_loss = -torch.min(surr1, surr2).mean()
                     clipfrac = ((ratio - 1.0).abs() > self.config.PPO_CLIP_EPS).float().mean()
 
+                    # normalize value preds and targets to stabalize grads bc we scale reutrns
                     value_pred = outputs["state_value"] / value_scale
+                    #dont use mse 
                     if value_loss_type == "mse":
                         value_loss = F.mse_loss(value_pred, scaled_returns)
                     else:
@@ -751,19 +785,22 @@ class Trainer:
                     )
                     style_loss = style_kl + style_hinge
 
+                    
                     loss = (
                         policy_loss
                         + self.config.PPO_VALUE_COEF * value_loss
-                        + style_coef_effective * style_loss
                         - entropy_coef_effective * entropy
+                    #grad accumed should be 1
                     ) / grad_accum
 
+                #defensive inf loss protection
                 if not torch.isfinite(loss.detach()).item():
                     nonfinite_loss_batches += 1
                     self.optimizer.zero_grad(set_to_none=True)
                     accum = 0
                     continue
 
+                #for early stopping, first order taylor approx,
                 approx_kl = (old_log_probs - new_log_probs).mean().item()
                 with torch.no_grad():
                     explained_var_raw, explained_var_valid, value_target_var = self._compute_explained_var(
@@ -774,6 +811,7 @@ class Trainer:
                 if approx_kl > kl_spike_threshold:
                     kl_spike_events += 1
 
+                #multiply loss by scale factor to prevend underflow wiht fp16
                 if self.amp_enabled:
                     self.scaler.scale(loss).backward()
                 else:
@@ -799,6 +837,7 @@ class Trainer:
                 if accum % grad_accum == 0:
                     if self.amp_enabled:
                         self.scaler.unscale_(self.optimizer)
+                    #clip grads to prevent explosion
                     grad_norm = torch.nn.utils.clip_grad_norm_(
                         self.model.parameters(),
                         self.config.GRAD_CLIP,
@@ -806,6 +845,7 @@ class Trainer:
                     grad_norm_value = float(grad_norm.item())
                     grad_is_nonfinite = not np.isfinite(grad_norm_value)
 
+                    #throw away NaNs to protect training, log for debugging
                     if grad_is_nonfinite and skip_nonfinite_grad:
                         nonfinite_grad_skips += 1
                         self.optimizer.zero_grad(set_to_none=True)
@@ -824,6 +864,7 @@ class Trainer:
                     optimizer_updates += 1
                     total_grad_norm += grad_norm_value
 
+                #stop if divergence too high to prevent overfitting
                 if approx_kl > self.config.PPO_TARGET_KL:
                     early_stop = True
                     break
@@ -831,6 +872,7 @@ class Trainer:
             if early_stop:
                 break
 
+        # update unstepped accumlated gradents if needed
         if accum % grad_accum != 0:
             if self.amp_enabled:
                 self.scaler.unscale_(self.optimizer)
@@ -856,7 +898,7 @@ class Trainer:
                 total_grad_norm += grad_norm_value
 
         if self.scheduler is not None and minibatch_count > 0:
-            # Scheduler tracks performance (higher is better), use negative value loss proxy.
+            # scheduler tracks performance (higher is better), use negative value loss proxy.
             self.scheduler.step(-(total_value_loss / minibatch_count))
 
         denom = max(1, minibatch_count)
@@ -878,7 +920,6 @@ class Trainer:
             "train/nonfinite_grad_skips": int(nonfinite_grad_skips),
             "train/nonfinite_loss_batches": int(nonfinite_loss_batches),
             "train/entropy_coef_effective": entropy_coef_effective,
-            "train/style_coef_effective": style_coef_effective,
             "train/style_kl": total_style_kl / denom,
             "train/style_hinge": total_style_hinge / denom,
             "train/style_loss": total_style_loss / denom,
@@ -919,7 +960,7 @@ class Trainer:
                     "eval/mccfr_es_seed": baseline_stats["baseline/seed"],
                     "eval/mccfr_es_baseline_build_s": baseline_stats["baseline/build_seconds"],
                     "eval/mccfr_es_baseline_cache_hit": float(baseline_stats["baseline/cache_hit"]),
-                    # Backwards-compatible aliases.
+                    # backwards-compatible aliases.
                     "eval/cfr_bb100": baseline_stats["bb_per_100"],
                     "eval/cfr_avg_return": baseline_stats["avg_return"],
                     "eval/cfr_stderr": baseline_stats["std_err"],
@@ -1059,11 +1100,11 @@ class Trainer:
         )
 
         for iteration in range(start_step, self.config.CFR_ITERATIONS):
+            #frac used for curriculum
             progress = float(iteration + 1) / float(max(1, int(self.config.CFR_ITERATIONS)))
             schedule_progress = self._effective_schedule_progress(iteration, start_step)
             policy_temperature = self._policy_temperature(schedule_progress)
             entropy_coef = self._entropy_coef(schedule_progress)
-            style_coef = self._style_reg_coef(schedule_progress)
             metrics = {
                 "iteration": iteration + 1,
                 "lr": self.optimizer.param_groups[0]["lr"],
@@ -1078,9 +1119,10 @@ class Trainer:
             )
             metrics.update(rollout_metrics)
 
-            update_metrics = self._ppo_update(entropy_coef=entropy_coef, style_coef=style_coef)
+            update_metrics = self._ppo_update(entropy_coef=entropy_coef)
             metrics.update(update_metrics)
 
+            #snapshot models for league with and refesh cache
             if (iteration + 1) % self.config.SNAPSHOT_INTERVAL == 0:
                 snapshot_score = rollout_metrics.get("rollout/mean_final_return_bb", 0.0)
                 self.league.add_snapshot(self.model, step=iteration + 1, score=snapshot_score)
@@ -1112,7 +1154,7 @@ class Trainer:
 
             self.global_step = iteration + 1
 
-        # Guarantee a final checkpoint exists even if the last step does not hit CHECKPOINT_FREQ.
+        # gugrantee a final checkpoint exists even if the last step does not hit CHECKPOINT_FREQ.
         if self.global_step > 0 and (self.global_step % self.config.CHECKPOINT_FREQ != 0):
             self._save_checkpoint(self.global_step, {"iteration": self.global_step})
             print(

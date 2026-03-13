@@ -5,10 +5,10 @@ from typing import Any, Dict, Optional
 
 import torch
 
-
+# after changing to 5 action form 4
 CHECKPOINT_FORMAT_VERSION = 2
 
-
+# useful to detect mismatches between configs 
 def _config_hash(config: Optional[Any]) -> str:
     if config is None:
         return ""
@@ -39,7 +39,7 @@ def save_checkpoint(
     extra: Optional[Dict[str, Any]] = None,
     keep_files: Optional[list] = None,
 ):
-    """Saves training state and prunes old checkpoints."""
+    #saves training state and prunes old checkpoints.
     dirname = os.path.dirname(path)
     if dirname:
         os.makedirs(dirname, exist_ok=True)
@@ -58,10 +58,12 @@ def save_checkpoint(
         "config_hash": _config_hash(config),
         "extra": extra if save_extra else {},
     }
+    #save optim helpful for disk space
     torch.save(payload, path)
 
     if single_file:
-        # Minimal-storage mode: keep only the rolling file.
+        # minimal-storage mode, keep only the rolling file.
+        # use exception handling for file system dones't breck the code
         try:
             keep_name = os.path.basename(path)
             keep_set = {keep_name}
@@ -78,7 +80,7 @@ def save_checkpoint(
             pass
         return
 
-    # Cleanup old point_<step>.pt style checkpoints.
+    # cleanup old point_<step>.pt style checkpoints.
     try:
         checkpoints = []
         for file_name in os.listdir(dirname or "."):
@@ -117,7 +119,7 @@ def load_checkpoint(path, model, optimizer=None, scheduler=None, map_location="c
 
     checkpoint = torch.load(path, map_location=map_location)
 
-    # v1 compatibility.
+    # v1 compatibility. didnt have format version and only had model and optimizer state dicts.
     if "format_version" not in checkpoint:
         model.load_state_dict(checkpoint["model_state_dict"])
         if optimizer and checkpoint.get("optimizer_state_dict") is not None:

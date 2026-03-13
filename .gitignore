@@ -6,9 +6,12 @@ __pycache__/
 .env
 .idea/
 .vscode/
+*.md
+!CLAUDE.md
 
-# Large checkpoint files (>100MB)
-checkpoints/latest.pt
+# Large checkpoint files (>100MB) — but allow latest.pt for deployment
+!checkpoints/latest.pt
 checkpoints/snapshots/final_opt/
 checkpoints/best_eval_final_optimization.pt
 checkpoints/best_eval_final_optimization_low_temp.pt
+.vercel

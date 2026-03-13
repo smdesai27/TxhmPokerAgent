@@ -25,6 +25,7 @@ class Evaluator:
         self.config = config
         self.device = device
         try:
+            #make sure on the right device 
             self.model_device = next(self.agent_model.parameters()).device
         except StopIteration:
             self.model_device = torch.device("cpu")
@@ -38,9 +39,12 @@ class Evaluator:
         self.effective_betting_abstraction = self.env.get_effective_betting_abstraction()
         self.config.BETTING_ABSTRACTION = self.effective_betting_abstraction
         self.encoder = StateEncoder(device="cpu", max_action_history=config.MAX_ACTION_HISTORY)
+        # for mccfr baselines caching to avoid having to rebuild
         self._baseline_cache: Dict[Tuple[str, int, int, Tuple[Tuple[str, str], ...]], Dict[str, object]] = {}
 
     class _ModelPolicyAdapter(policy_lib.Policy):
+        # adapts to the open spiel policy interface by outputing action probs from the ops state
+        # for nash evaluation
         def __init__(self, evaluator):
             super().__init__(evaluator.env.game, [0, 1])
             self.evaluator = evaluator
@@ -81,6 +85,7 @@ class Evaluator:
         return int(dist.sample().item())
 
     @staticmethod
+    # seeed them tgther for consistancy and ease of use in slurm scripts
     def _seed_rngs(seed: int):
         random.seed(seed)
         np.random.seed(seed)
@@ -226,8 +231,10 @@ class Evaluator:
 
         for episode_idx in range(num_episodes):
             state = self.env.reset()
+            # alternate seats for fairness
             agent_player_id = 0 if episode_idx < (num_episodes / 2) else 1
 
+            #chance nodes
             while not state.is_terminal():
                 if state.is_chance_node():
                     outcomes = state.chance_outcomes()
@@ -268,6 +275,7 @@ class Evaluator:
                                     pot_size=pot_size,
                                 )
                             )
+                        #metrics
                         pot_legal = any(b == "pot_raise" for b in legal_buckets)
                         half_legal = any(b == "half_pot" for b in legal_buckets)
                         if pot_legal:
@@ -436,7 +444,8 @@ class Evaluator:
         baseline_algo: str | None = None,
         seed_base: int | None = None,
     ) -> Dict[str, object]:
-        """Build a solver-derived preflop style target from MCCFR policy self-play."""
+        """Build a solver-derived preflop style target from MCCFR policy self-play. Legacy, for curiousity"""
+
         algo = baseline_algo or getattr(self.config, "EVAL_BASELINE_ALGO", "mccfr_external_sampling")
         base_seed = int(seed_base if seed_base is not None else getattr(self.config, "SEED", 42))
         abstractions = str(getattr(self.config, "BETTING_ABSTRACTION", "fcpa")).lower()
@@ -587,9 +596,7 @@ class Evaluator:
         num_bins: int = 5,
     ) -> dict:
         """Bin preflop decisions by coarse hand strength and record action
-        frequency distributions per bin.  Demonstrates strategic coherence:
-        fold frequency should decrease and raise/all-in frequency should
-        increase with hand strength."""
+        frequency distributions per bin. probe for some strategy."""
         self._seed_rngs(seed)
         abstraction = str(getattr(self.config, "BETTING_ABSTRACTION", "fcpa")).lower()
 

@@ -6,6 +6,7 @@ from .model_utils import masked_logits
 
 
 class ResidualBlock(nn.Module):
+    #use layernorm instead of batch since PPO batches can be unstable
     def __init__(self, dim, dropout=0.1):
         super().__init__()
         self.fc = nn.Sequential(
@@ -43,6 +44,7 @@ class AlphaHoldemNetwork(nn.Module):
         )
 
         scalar_dim = getattr(config, "SCALAR_DIM", 11)
+        # can pass scalars right in bc they are nomrmed by the enviornment
         combined_dim = self.card_tower.output_dim + self.action_tower.output_dim + scalar_dim
 
         layers = [
@@ -52,6 +54,8 @@ class AlphaHoldemNetwork(nn.Module):
             nn.Dropout(config.DROPOUT),
         ]
 
+        #true; we want residuals for better PPO gradient flow
+        # Linear(523 → 256) → LayerNorm → ReLU → Dropout into resblocks
         if config.USE_RESIDUAL:
             layers.extend([
                 ResidualBlock(config.HIDDEN_DIM, config.DROPOUT),
@@ -76,6 +80,7 @@ class AlphaHoldemNetwork(nn.Module):
 
         self.apply(self._init_weights)
 
+        # init wiht near 0 for stability (no big policy updates at start due to large rdms)
         nn.init.uniform_(self.policy_head.weight, -0.01, 0.01)
         nn.init.zeros_(self.policy_head.bias)
         nn.init.uniform_(self.value_head.weight, -0.01, 0.01)
@@ -88,11 +93,13 @@ class AlphaHoldemNetwork(nn.Module):
                 nn.init.zeros_(module.bias)
 
     def forward(self, state_dict):
+        #no masking model should learn illegal
         hole_cards = state_dict["hole_cards"]
         community_cards = state_dict["community_cards"]
         action_history = state_dict["action_history"]
         scalars = state_dict["scalars"]
 
+        # for inference (11,) -> (1, 11)
         if scalars.dim() == 1:
             scalars = scalars.unsqueeze(0)
 
@@ -100,6 +107,7 @@ class AlphaHoldemNetwork(nn.Module):
 
         if action_history.dim() == 1:
             action_history = action_history.unsqueeze(0)
+        #defensive check againt empty preflop seq.
         seq_lengths = (action_history != self.num_actions).sum(dim=1)
         seq_lengths = torch.clamp(seq_lengths, min=1)
         action_features = self.action_tower(action_history, sequence_lengths=seq_lengths)
@@ -110,6 +118,7 @@ class AlphaHoldemNetwork(nn.Module):
         policy_logits = self.policy_head(x)
         state_value = self.value_head(x).squeeze(-1)
 
+        #dict a design is more flexible and code more clear
         return {
             "policy_logits": policy_logits,
             "state_value": state_value,
@@ -117,6 +126,7 @@ class AlphaHoldemNetwork(nn.Module):
 
     def masked_policy_logits(self, state_dict):
         outputs = self.forward(state_dict)
+        #apply mask after forward; for inference
         legal_mask = state_dict["legal_action_mask"]
         outputs["policy_logits"] = masked_logits(outputs["policy_logits"], legal_mask)
         return outputs
