@@ -32,7 +32,11 @@ from .schemas import (
 # Module-level storage for CLI args, read by lifespan.
 _cli_args: dict = {}
 
-STATIC_DIR = Path(__file__).parent / "static"
+# Prefer project-root public/ (canonical source), fall back to bundled static/
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+STATIC_DIR = _PROJECT_ROOT / "public"
+if not STATIC_DIR.is_dir():
+    STATIC_DIR = Path(__file__).parent / "static"
 
 
 def _load_config(config_file: str, config_name: str) -> Config:
@@ -60,7 +64,7 @@ def _load_config(config_file: str, config_name: str) -> Config:
 
 
 def _infer_checkpoint_num_actions(checkpoint_path: str) -> int:
-    payload = torch.load(checkpoint_path, map_location="cpu")
+    payload = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
     model_state = payload.get("model_state_dict", {})
     policy_bias = model_state.get("policy_head.bias")
     if policy_bias is None:
@@ -153,13 +157,17 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AlphaHoldem Poker", lifespan=lifespan)
 
 cors_origins = os.environ.get("CORS_ORIGINS", "")
-if cors_origins:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=cors_origins.split(","),
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+origins = cors_origins.split(",") if cors_origins else [
+    "http://localhost:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -185,7 +193,10 @@ def create_session(req: CreateSessionRequest):
     try:
         gs, stats = game_manager.create_session(req.human_seat)
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        msg = str(e)
+        if "Too many active sessions" in msg:
+            raise HTTPException(429, msg)
+        raise HTTPException(400, msg)
     return CreateSessionResponse(game_state=gs, stats=stats)
 
 
@@ -196,7 +207,7 @@ def get_session(session_id: str):
     try:
         gs, stats = game_manager.get_state(session_id)
     except KeyError:
-        raise HTTPException(404, f"Session {session_id} not found")
+        raise HTTPException(404, "Session not found")
     return CreateSessionResponse(game_state=gs, stats=stats)
 
 
@@ -207,7 +218,7 @@ def submit_action(session_id: str, req: ActionRequest):
     try:
         gs, stats = game_manager.apply_human_action(session_id, req.action_id)
     except KeyError:
-        raise HTTPException(404, f"Session {session_id} not found")
+        raise HTTPException(404, "Session not found")
     except ValueError as e:
         raise HTTPException(400, str(e))
     return ActionResponse(game_state=gs, stats=stats)
@@ -220,7 +231,7 @@ def new_hand(session_id: str):
     try:
         gs, stats = game_manager.new_hand(session_id)
     except KeyError:
-        raise HTTPException(404, f"Session {session_id} not found")
+        raise HTTPException(404, "Session not found")
     except ValueError as e:
         raise HTTPException(400, str(e))
     return NewHandResponse(game_state=gs, stats=stats)

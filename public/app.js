@@ -26,7 +26,19 @@
   async function api(method, path, body) {
     const opts = { method, headers: { "Content-Type": "application/json" } };
     if (body !== undefined) opts.body = JSON.stringify(body);
-    const res = await fetch(API_BASE + path, opts);
+    let res;
+    try {
+      res = await fetch(API_BASE + path, opts);
+    } catch {
+      if (!API_BASE) {
+        throw new Error(
+          "Backend not connected. Set POKER_API_BASE in public/config.js to your API URL."
+        );
+      }
+      throw new Error(
+        "Cannot reach backend at " + API_BASE + ". Is the server running?"
+      );
+    }
     if (!res.ok) {
       let msg;
       try {

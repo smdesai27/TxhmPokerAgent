@@ -1,0 +1,15 @@
+.git
+.github
+logs/
+wandb/
+venv/
+.env
+*.md
+!CLAUDE.md
+tests/
+scripts/
+__pycache__
+*.pyc
+.DS_Store
+.vercel
+.claude

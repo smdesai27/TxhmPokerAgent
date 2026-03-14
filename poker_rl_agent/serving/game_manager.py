@@ -69,6 +69,7 @@ class GameManager:
         policy_temperature: float = 1.0,
         session_ttl: float = 3600.0,
         bb_size: float = 100.0,
+        max_sessions: int = 100,
     ):
         self._model = model
         self._encoder = encoder
@@ -83,6 +84,7 @@ class GameManager:
         self._policy_temperature = policy_temperature
         self._session_ttl = session_ttl
         self._bb_size = bb_size
+        self._max_sessions = max_sessions
 
         self._sessions: Dict[str, SessionData] = {}
         self._sessions_lock = threading.Lock()
@@ -95,9 +97,9 @@ class GameManager:
     def _get_session(self, session_id: str) -> SessionData:
         with self._sessions_lock:
             session = self._sessions.get(session_id)
-        if session is None:
-            raise KeyError(f"Session {session_id} not found")
-        session.last_accessed = time.monotonic()
+            if session is None:
+                raise KeyError("Session not found")
+            session.last_accessed = time.monotonic()
         return session
 
     def create_session(self, human_seat: int = 0) -> Tuple[GameState, SessionStats]:
@@ -121,6 +123,8 @@ class GameManager:
         self._advance_to_human_or_terminal(session)
 
         with self._sessions_lock:
+            if len(self._sessions) >= self._max_sessions:
+                raise ValueError("Too many active sessions")
             self._sessions[session_id] = session
 
         return self._build_game_state(session), self._build_stats(session)

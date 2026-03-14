@@ -8,8 +8,12 @@ RUN pip install --no-cache-dir \
     -r requirements.txt
 
 COPY poker_rl_agent/ poker_rl_agent/
+COPY public/ public/
 COPY configs/ configs/
 COPY checkpoints/latest.pt checkpoints/latest.pt
+
+RUN adduser --disabled-password --gecos '' appuser
+USER appuser
 
 EXPOSE 8000
 

@@ -73,7 +73,7 @@ class SessionStats(BaseModel):
 
 
 class CreateSessionRequest(BaseModel):
-    human_seat: int = 0
+    human_seat: int = Field(default=0, ge=0, le=1)
 
 
 class CreateSessionResponse(BaseModel):
@@ -82,7 +82,7 @@ class CreateSessionResponse(BaseModel):
 
 
 class ActionRequest(BaseModel):
-    action_id: int
+    action_id: int = Field(ge=0)
 
 
 class ActionResponse(BaseModel):
