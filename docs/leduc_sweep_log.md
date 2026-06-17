@@ -78,10 +78,36 @@ fix:** average over the FULL post-warmup trajectory (fictitious-play / NFSP-styl
 averages OUT the rotation. (R1's avgwin30 looked bad only because at 400 iters the policy was still
 improving; over a long cycling run a full post-warmup average should be low AND stable.)
 
-### Round 4 (RUNNING) — full post-warmup fictitious-play average (the principled convergent estimate)
-Add a one-shot FP-average over all snapshots after `--avg_warmup_frac` (default 0.3), computed at
-the end. Re-run the R3 best cluster (lr-annealed, ent 0.10→0.002, batch 256/384, 1500 it) + seeds,
-reporting `fp_average_nash_conv` as the headline. **Results: _pending_.**
+### Round 4 (DONE) — full post-warmup snapshot FP-average (artifacts docs/leduc_sweep4/)
+| config | FP snapshot-average NashConv | recent-window best |
+|---|---|---|
+| fp_bb384 | 0.84 | 0.69 |
+| fp13 | 0.92 | 0.68 |
+| fp_warm50 (skip 50%) | 0.96 | 0.67 |
+| fp42 | 1.01 | 0.67 |
+| fp7 | 1.27 | 0.93 |
+| fp_snap5 (finer snaps) | 1.28 | 0.73 |
+
+**Finding (hypothesis REJECTED):** averaging snapshot NETWORKS over the full post-warmup trajectory
+is WORSE (0.84–1.28) than the best recent point (0.67). Reason: the self-play iterates make wide
+excursions (0.67↔2.6), not a tight orbit around Nash; averaging network params/outputs over wide
+excursions gives a muddy mixture, not the equilibrium. Proper fictitious play averages the STRATEGY
+via supervised learning on a reservoir of the agent's actions — i.e. NFSP. Snapshot-averaging ≠ NFSP.
+
+### Round 5 (RUNNING) — NFSP-lite: PPO best-responder + supervised average-policy network
+New script `validate_leduc_nfsp.py`: a PPO best-responder plays against the AVERAGE policy π̄; π̄ is a
+separate net trained by supervised classification on a reservoir of the best-responder's (state,action)
+pairs over all training (the true FP average). Evaluate exploitability of π̄ — the convergent estimate.
+This is the established self-play→Nash method (Heinrich & Silver 2016). **Results: _pending_.**
+
+## Best so far
+| round | config | avg-policy NashConv (best) | reduction vs random | notes |
+|---|---|---|---|---|
+| pre | vanilla + rolling, 500 iters | 1.50 | 3.2× | iterate cycles; average converges |
+| R1 | ent10 (entropy 0.10) | 1.21 | 3.9× | lowest floor; still cycles |
+| R2 | combo7 (ent0.10→0.003, batch256) | 0.81 | 5.9× | below 1.0; cycles |
+| R3 | lrdecay42 (lr-anneal + ent + batch256) | **0.67** | **7.1×** | best so far; recent-avg, cycles |
+| R4 | FP snapshot-average | 0.84 (best FP) | 5.7× | snapshot-averaging worse than R3; → NFSP |
 
 ## Best so far
 | round | config | avg-policy NashConv (best) | reduction vs random | notes |
