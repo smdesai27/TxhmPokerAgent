@@ -1,1 +1,0 @@
-sbatch: slurm_job_submit: No partition specified, moved to batch.

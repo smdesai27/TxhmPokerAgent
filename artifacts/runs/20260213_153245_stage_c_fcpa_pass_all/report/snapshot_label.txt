@@ -1,1 +1,0 @@
-stage_c_fcpa_pass_all_snapshot
