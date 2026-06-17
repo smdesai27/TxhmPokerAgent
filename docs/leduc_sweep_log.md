@@ -27,15 +27,36 @@ bigger batch (lower-variance gradients), and especially a LONGER fictitious-play
 (`--avg_window`) since the time-average — not the cycling current iterate — is what converges.
 
 ## Rounds
-### Round 1 (RUNNING) — one-factor scan vs baseline
-400 iters, seed 42, vanilla + rolling. Configs: `baseline`, `ent03/ent06/ent10`,
-`entanneal`(0.10→0.005), `lr1e4`, `batch192`, `avgwin30`, `self08`, `self02`,
-`combo`(ent06+batch128+avgwin30). **Results: _pending_** (fill from `sw1_*.log/json`).
+### Round 1 (DONE) — one-factor scan (400 iters, seed 42, vanilla+rolling); artifacts docs/leduc_sweep1/
+| config | avg-best | best→final (stability) | note |
+|---|---|---|---|
+| ent10 (entropy 0.10) | **1.21** | 1.21→1.68 (cycles) | highest entropy → lowest floor |
+| entanneal 0.10→0.005 | 1.24 | 1.24→1.41 | anneal aids stability |
+| batch192 | 1.28 | **1.28→1.28 (no cycling)** | bigger batch eliminates cycling |
+| baseline | 1.28 | 1.28→2.68 (cycles hard) | reference |
+| ent06 | 1.29 | 1.29→2.13 | |
+| self02 | 1.33 | 1.33→1.33 | more snapshot play = stable, not lower |
+| avgwin30 | 1.37 | flat | longer averaging HURT (averages early-junk in) |
+| combo | 1.38 | | |
+| self08 | 1.42 | | more self-play = worse |
+| lr1e4 | 1.91 | flat | too slow at 400 iters |
+
+**Throughlines:** ↑entropy lowers the floor; ↑batch removes cycling; anneal stabilizes.
+**Anti-findings:** low LR too slow; longer averaging window hurts (keep avg recent/small); more
+self-play hurts. **Plateau:** everything ~1.2 at 400 iters → likely a vanilla-PPO-self-play floor;
+Round 2 tests longer training + entropy×big-batch×anneal, else escalate to NFSP-style averaging.
+
+### Round 2 (RUNNING) — combine winners + train longer + 2nd-seed confirm
+1200–1600 iters, eval_every 50. Configs: `combo42`/`combo7` (ent 0.10→0.003, batch 256, 1200 it,
+seeds 42/7), `bb384` (ent 0.08→0.003, batch 384), `ent15` (ent 0.15→0.002, batch 192), `long`
+(ent 0.05→0.005, batch 192, 1600 it), `combo_avg4` (combo + avg_window 4). **Results: _pending_.**
 
 ## Best so far
 | round | config | avg-policy NashConv (best) | reduction vs random | notes |
 |---|---|---|---|---|
 | pre | vanilla + rolling, 500 iters | 1.50 | 3.2× | iterate cycles; average converges |
+| R1 | ent10 (entropy 0.10) | **1.21** | 3.9× | lowest floor; still cycles |
+| R1 | batch192 | 1.28 | 3.7× | most STABLE (no cycling) |
 
 ## Prior ablation (context — not part of this sweep)
 Trinal-Clip ≡ vanilla on Leduc (clips never fire on-policy / at this scale); simplified Elo-kBSP
