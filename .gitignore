@@ -16,6 +16,7 @@ __pycache__/
 !README.md
 !AUDIT_AND_PRESENTATION_PLAN.md
 !HANDOFF.md
+!docs/*.md
 
 # Experiment scratch — results live on the HPC / W&B, not in git.
 logs/
