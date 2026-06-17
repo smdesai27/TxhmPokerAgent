@@ -52,13 +52,18 @@ def _load_config(config_file: str, config_name: str) -> Config:
     return config
 
 
+from poker_rl_agent.evaluation.stats import t95_multiplier
+
+
 def _aggregate(values):
     arr = np.array(values, dtype=np.float64)
-    mean = float(arr.mean()) if arr.size else 0.0
-    std = float(arr.std(ddof=1)) if arr.size > 1 else 0.0
-    stderr = float(std / np.sqrt(arr.size)) if arr.size > 1 else 0.0
-    ci95 = float(1.96 * stderr)
-    return {"mean": mean, "std": std, "stderr": stderr, "ci95": ci95, "n": int(arr.size)}
+    n = int(arr.size)
+    mean = float(arr.mean()) if n else 0.0
+    std = float(arr.std(ddof=1)) if n > 1 else 0.0
+    stderr = float(std / np.sqrt(n)) if n > 1 else 0.0
+    # Student-t for the small seed-count samples (n typically 3-5); 1.96 for df > 30.
+    ci95 = float(t95_multiplier(n) * stderr)
+    return {"mean": mean, "std": std, "stderr": stderr, "ci95": ci95, "n": n}
 
 
 def build_profile_tiers(profile: str, episodes_per_seed: int, betting_abstraction: str) -> List[Dict[str, int]]:

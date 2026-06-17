@@ -129,6 +129,8 @@ class Config:
     EVAL_ENABLE_RANDOM: bool = True
     EVAL_ENABLE_CFR: bool = False  # compatibility flag for solver baseline eval
     EVAL_ENABLE_NASH_CONV: bool = False
+    EVAL_ENABLE_DUPLICATE: bool = False  # variance-reduced duplicate/mirrored-seat eval
+    EVAL_DUPLICATE_PAIRS: int = 2500     # number of duplicated deals (2 hands each)
     BEHAVIOR_GATE_ENABLE: bool = True
     BEHAVIOR_GATE_MAX_FOLD_FREQ: float = 0.78
     BEHAVIOR_GATE_MAX_ALLIN_FREQ: float = 0.03

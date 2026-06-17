@@ -15,6 +15,7 @@ from ..environment.openspiel_wrapper import PokerEnv
 from ..environment.state_representation import StateEncoder
 from ..models.model_utils import masked_logits
 from .baseline_agents import PolicyAgent
+from .stats import t95_multiplier
 
 
 class Evaluator:
@@ -671,6 +672,11 @@ class Evaluator:
         }
 
     def evaluate_nash_conv(self):
+        # NOTE: exploitability.nash_conv does an EXACT full game-tree traversal. It is
+        # only tractable on small games (e.g. leduc_poker), NOT full-deck HUNL even
+        # under the FCPA/FCHPA betting abstraction (the card chance nodes are
+        # astronomically large). Use this for method validation on a solvable game;
+        # for HUNL rely on duplicate-hand win-rate (evaluate_duplicate) instead.
         model_policy = self._ModelPolicyAdapter(self)
         nash_conv_value = exploitability.nash_conv(
             self.env.game,
@@ -679,3 +685,74 @@ class Evaluator:
             use_cpp_br=False,
         )
         return float(nash_conv_value)
+
+    def _play_one_hand(self, opponent, agent_player_id, seed):
+        """Play one hand with the agent seated at ``agent_player_id`` under a fixed
+        RNG seed; return the agent's terminal chip return."""
+        self._seed_rngs(int(seed))
+        state = self.env.reset()
+        while not state.is_terminal():
+            if state.is_chance_node():
+                outcomes = state.chance_outcomes()
+                action_list, probs = zip(*outcomes)
+                action = np.random.choice(action_list, p=probs)
+                state.apply_action(int(action))
+                continue
+            current_player = state.current_player()
+            if current_player == agent_player_id:
+                action = self._sample_model_action(state, current_player)
+            else:
+                action = int(opponent.step(state))
+            state.apply_action(int(action))
+        return float(state.returns()[agent_player_id])
+
+    def evaluate_duplicate(self, opponent, num_pairs=2500, seed=None):
+        """Variance-reduced evaluation via duplicate (mirrored-seat) hands.
+
+        Each "pair" plays the SAME deal twice under a common RNG seed with the
+        agent's seat swapped: once in seat 0, once in seat 1. The hole-card chance
+        nodes are drawn before any betting, so both plays deal identical hole cards
+        to identical slots -- swapping the agent's seat makes it play BOTH holdings
+        of the same deal against the same opponent. Averaging the agent's two
+        returns cancels most of the card-luck variance (antithetic / duplicate
+        poker), shrinking the bb/100 confidence interval by roughly an order of
+        magnitude vs i.i.d. sampling. The per-pair averages are the i.i.d. sampling
+        unit, so the CI is a Student-t interval over ``num_pairs`` values.
+
+        Hole-card pairing is exact; board cards drawn after betting can differ once
+        the two plays' action sequences diverge, so this removes most (not all)
+        variance. Returns the same metric shape as ``evaluate`` plus paired-CI fields.
+        """
+        base_seed = int(seed) if seed is not None else int(getattr(self.config, "SEED", 42))
+        bb = max(float(getattr(self.config, "BB_SIZE", 100.0)), 1.0)
+        pair_returns = []  # agent chip return averaged over the two mirrored seats
+        for pair_idx in range(int(num_pairs)):
+            deal_seed = base_seed + pair_idx
+            r0 = self._play_one_hand(opponent, agent_player_id=0, seed=deal_seed)
+            r1 = self._play_one_hand(opponent, agent_player_id=1, seed=deal_seed)
+            pair_returns.append(0.5 * (r0 + r1))
+
+        arr = np.array(pair_returns, dtype=np.float64)
+        n = int(arr.size)
+        avg_return = float(arr.mean()) if n else 0.0
+        bb_per_100 = float((avg_return / bb) * 100.0)
+        pair_std = float(arr.std(ddof=1)) if n > 1 else 0.0
+        pair_stderr = float(pair_std / np.sqrt(n)) if n > 1 else 0.0
+        bb100_stderr = float((pair_stderr / bb) * 100.0)
+        bb100_ci95 = float(t95_multiplier(n) * bb100_stderr)
+        return {
+            "avg_return": avg_return,
+            "bb_per_100": bb_per_100,
+            "std_err": pair_stderr,
+            "bb_per_100_stderr": bb100_stderr,
+            "bb_per_100_ci95": bb100_ci95,
+            "bb_per_100_ci95_lower": bb_per_100 - bb100_ci95,
+            "bb_per_100_ci95_upper": bb_per_100 + bb100_ci95,
+            "pairs": n,
+            "episodes": 2 * n,
+            "method": "duplicate_mirrored_seat",
+            "ci_method": "normal" if (n - 1) > 30 else "student_t",
+            "meta/requested_betting_abstraction": str(self.requested_betting_abstraction),
+            "meta/effective_betting_abstraction": str(self.effective_betting_abstraction),
+            "meta/strict_abstraction": bool(getattr(self.config, "STRICT_ABSTRACTION", True)),
+        }
