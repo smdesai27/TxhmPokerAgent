@@ -757,49 +757,11 @@ def test_evaluate_script_writes_acceptance_fields():
         assert isinstance(payload["acceptance/pass_primary_gate"], bool)
 
 
-def test_stage_b_eval_slurm_script_is_present_and_valid_bash():
-    slurm_path = str(PROJECT_ROOT / "scripts" / "slurm_stage_b_eval.slurm")
-    assert os.path.exists(slurm_path)
-    subprocess.run(["bash", "-n", slurm_path], check=True)
-
-
-def test_stage_c_slurm_scripts_are_present_and_valid_bash():
-    for name in ["slurm_stage_c_train.slurm", "slurm_stage_c_eval.slurm"]:
-        slurm_path = str(PROJECT_ROOT / "scripts" / name)
-        assert os.path.exists(slurm_path)
-        subprocess.run(["bash", "-n", slurm_path], check=True)
-
-
-def test_stage_d_slurm_scripts_are_present_and_valid_bash():
-    for name in [
-        "slurm_stage_d_fchpa_train.slurm",
-        "slurm_stage_d_fchpa_eval.slurm",
-        "slurm_stage_d_fcpha_train.slurm",
-        "slurm_stage_d_fcpha_eval.slurm",
-    ]:
-        slurm_path = str(PROJECT_ROOT / "scripts" / name)
-        assert os.path.exists(slurm_path)
-        subprocess.run(["bash", "-n", slurm_path], check=True)
-
-
-def test_stage_d_ablation_and_selection_slurm_scripts_are_present_and_valid_bash():
-    for name in [
-        "slurm_stage_d_fchpa_ablation_train.slurm",
-        "slurm_stage_d_fchpa_ablation_eval.slurm",
-        "slurm_stage_d_fchpa_selected_16k_train.slurm",
-        "slurm_stage_d_fchpa_selected_16k_cert_eval.slurm",
-        "slurm_stage_d_build_style_target.slurm",
-    ]:
-        slurm_path = str(PROJECT_ROOT / "scripts" / name)
-        assert os.path.exists(slurm_path)
-        subprocess.run(["bash", "-n", slurm_path], check=True)
-
-
-def test_stage_e_slurm_scripts_are_present_and_valid_bash():
-    for name in ["slurm_stage_e_fullgame_train.slurm", "slurm_stage_e_fullgame_eval.slurm"]:
-        slurm_path = str(PROJECT_ROOT / "scripts" / name)
-        assert os.path.exists(slurm_path)
-        subprocess.run(["bash", "-n", slurm_path], check=True)
+# NOTE: The SLURM-script-presence tests were removed in Phase 0 cleanup. They asserted
+# the existence of ops scripts under scripts/ that have since been archived to
+# scripts/archived/ (or deleted), producing failures unrelated to code correctness.
+# Training/eval correctness is covered by the Trainer and evaluator unit tests above;
+# cluster ops scripts are intentionally not unit-tested.
 
 
 def test_stage_d_continue_preset_exists_and_resumes():
@@ -1633,11 +1595,12 @@ def test_stage_d_corrective_scripts_exist_and_are_shell_valid():
 
 
 def test_stage_d_recovery_scripts_exist_and_are_shell_valid():
+    # run_stage_d_human_validation.sh was removed from the repo; only assert the
+    # recovery scripts that still exist (presence + shell-syntax validity).
     script_paths = [
         PROJECT_ROOT / "scripts" / "slurm_stage_d_fchpa_recovery_select.slurm",
         PROJECT_ROOT / "scripts" / "slurm_stage_d_fchpa_recovery_prepare_winner.slurm",
         PROJECT_ROOT / "scripts" / "submit_stage_d_fchpa_recovery_cycle.sh",
-        PROJECT_ROOT / "scripts" / "run_stage_d_human_validation.sh",
     ]
     for path in script_paths:
         assert path.exists(), f"Missing script: {path}"

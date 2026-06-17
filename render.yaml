@@ -5,7 +5,9 @@ services:
     plan: free
     envVars:
       - key: CHECKPOINT_PATH
-        value: checkpoints/latest.pt
+        value: checkpoints/serving_champion.pt
+      - key: CHECKPOINT_LABEL
+        value: "Stage D FCHPA 21k champion (passes all eval gates)"
       - key: GAME_MODE
         value: fchpa
       - key: BOT_POLICY

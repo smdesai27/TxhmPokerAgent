@@ -99,3 +99,6 @@ class HealthResponse(BaseModel):
     status: str
     model_loaded: bool
     active_sessions: int
+    checkpoint_label: str = ""
+    num_actions: int = 0
+    game_mode: str = ""

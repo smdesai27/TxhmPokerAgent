@@ -67,9 +67,9 @@ class GameManager:
         strict_abstraction: bool,
         bot_policy: str = "sample",
         policy_temperature: float = 1.0,
-        session_ttl: float = 3600.0,
+        session_ttl: float = 1200.0,
         bb_size: float = 100.0,
-        max_sessions: int = 100,
+        max_sessions: int = 64,
     ):
         self._model = model
         self._encoder = encoder
@@ -93,6 +93,10 @@ class GameManager:
     def active_session_count(self) -> int:
         with self._sessions_lock:
             return len(self._sessions)
+
+    @property
+    def num_actions(self) -> int:
+        return self._num_actions
 
     def _get_session(self, session_id: str) -> SessionData:
         with self._sessions_lock:

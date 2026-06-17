@@ -10,7 +10,8 @@ RUN pip install --no-cache-dir \
 COPY poker_rl_agent/ poker_rl_agent/
 COPY public/ public/
 COPY configs/ configs/
-COPY checkpoints/latest.pt checkpoints/latest.pt
+# Deploy the certified Stage D 21k champion (not the gate-failing latest.pt).
+COPY checkpoints/snapshots/interview_ready/interview_ready_1.pt checkpoints/serving_champion.pt
 
 RUN adduser --disabled-password --gecos '' appuser
 USER appuser

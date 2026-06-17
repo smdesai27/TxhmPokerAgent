@@ -159,13 +159,13 @@ class Trainer:
         decay = float(getattr(self.config, "PPO_ENTROPY_DECAY_FRAC", 1.0))
         return max(0.0, self._linear_schedule(start, end, progress, decay))
 
-    # def _style_reg_coef(self, progress: float) -> float:
-    #     if not bool(getattr(self.config, "STYLE_REG_ENABLE", False)):
-    #         return 0.0
-    #     start = float(getattr(self.config, "STYLE_REG_COEF_START", 0.0))
-    #     end = float(getattr(self.config, "STYLE_REG_COEF_END", 0.0))
-    #     decay = float(getattr(self.config, "STYLE_REG_DECAY_FRAC", 1.0))
-    #     return max(0.0, self._linear_schedule(start, end, progress, decay))
+    def _style_reg_coef(self, progress: float) -> float:
+        if not bool(getattr(self.config, "STYLE_REG_ENABLE", False)):
+            return 0.0
+        start = float(getattr(self.config, "STYLE_REG_COEF_START", 0.0))
+        end = float(getattr(self.config, "STYLE_REG_COEF_END", 0.0))
+        decay = float(getattr(self.config, "STYLE_REG_DECAY_FRAC", 1.0))
+        return max(0.0, self._linear_schedule(start, end, progress, decay))
 
     def _resolve_opponent_mix(self):
         """Resolves league/random/exploit ratios with backwards-compatible fallback."""
@@ -221,56 +221,56 @@ class Trainer:
             agents.append(AlwaysCallAgent())
         return agents
 
-    # # not used / style reg is legacy 
-    # def _load_style_target_profile(self):
-    #     if not bool(getattr(self.config, "STYLE_REG_ENABLE", False)):
-    #         return None
-    #     if not bool(getattr(self.config, "STYLE_TARGET_USE_SOLVER_PROFILE", True)):
-    #         return None
-    #     path = str(getattr(self.config, "STYLE_TARGET_PROFILE_PATH", "")).strip()
-    #     if not path:
-    #         return None
-    #     if not os.path.exists(path):
-    #         print(f"Style target profile not found, disabling style regularizer: {path}", flush=True)
-    #         return None
+    # Style regularizer: optional behavior-shaping term, disabled by default.
+    def _load_style_target_profile(self):
+        if not bool(getattr(self.config, "STYLE_REG_ENABLE", False)):
+            return None
+        if not bool(getattr(self.config, "STYLE_TARGET_USE_SOLVER_PROFILE", True)):
+            return None
+        path = str(getattr(self.config, "STYLE_TARGET_PROFILE_PATH", "")).strip()
+        if not path:
+            return None
+        if not os.path.exists(path):
+            print(f"Style target profile not found, disabling style regularizer: {path}", flush=True)
+            return None
 
-    #     try:
-    #         with open(path, "r", encoding="utf-8") as fh:
-    #             payload = json.load(fh)
-    #     except Exception as exc:
-    #         print(f"Failed loading style target profile '{path}': {exc}", flush=True)
-    #         return None
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                payload = json.load(fh)
+        except Exception as exc:
+            print(f"Failed loading style target profile '{path}': {exc}", flush=True)
+            return None
 
-    #     target = payload.get("target", {})
-    #     if not isinstance(target, dict):
-    #         target = {}
-    #     keys = ["fold", "call_check", "half_pot", "pot_raise", "allin"]
-    #     values = np.array([float(target.get(k, 0.0)) for k in keys], dtype=np.float64)
-    #     values = np.clip(values, 0.0, None)
-    #     if values.sum() <= 0.0:
-    #         print(f"Style target profile has empty target distribution, disabling: {path}", flush=True)
-    #         return None
-    #     values = values / values.sum()
+        target = payload.get("target", {})
+        if not isinstance(target, dict):
+            target = {}
+        keys = ["fold", "call_check", "half_pot", "pot_raise", "allin"]
+        values = np.array([float(target.get(k, 0.0)) for k in keys], dtype=np.float64)
+        values = np.clip(values, 0.0, None)
+        if values.sum() <= 0.0:
+            print(f"Style target profile has empty target distribution, disabling: {path}", flush=True)
+            return None
+        values = values / values.sum()
 
-    #     target_pot_given_legal = float(
-    #         payload.get(
-    #             "target/preflop_choose_given_legal/pot_raise",
-    #             payload.get("diagnostics/preflop_choose_given_legal/pot_raise", 0.0),
-    #         )
-    #     )
-    #     target_half_given_legal = float(
-    #         payload.get(
-    #             "target/preflop_choose_given_legal/half_pot",
-    #             payload.get("diagnostics/preflop_choose_given_legal/half_pot", 0.0),
-    #         )
-    #     )
+        target_pot_given_legal = float(
+            payload.get(
+                "target/preflop_choose_given_legal/pot_raise",
+                payload.get("diagnostics/preflop_choose_given_legal/pot_raise", 0.0),
+            )
+        )
+        target_half_given_legal = float(
+            payload.get(
+                "target/preflop_choose_given_legal/half_pot",
+                payload.get("diagnostics/preflop_choose_given_legal/half_pot", 0.0),
+            )
+        )
 
-    #     return {
-    #         "path": path,
-    #         "target_dist": values.astype(np.float32),
-    #         "target_pot_given_legal": max(0.0, target_pot_given_legal),
-    #         "target_half_given_legal": max(0.0, target_half_given_legal),
-    #     }
+        return {
+            "path": path,
+            "target_dist": values.astype(np.float32),
+            "target_pot_given_legal": max(0.0, target_pot_given_legal),
+            "target_half_given_legal": max(0.0, target_half_given_legal),
+        }
 
     def _preflop_bucket_indices(self):
         abstraction = str(getattr(self.config, "BETTING_ABSTRACTION", "fcpa")).lower()
@@ -350,88 +350,88 @@ class Trainer:
             return advantages
         return torch.clamp(advantages, min=-adv_clip, max=adv_clip)
 
-    # def _compute_style_regularizer(
-    #     self,
-    #     probs: torch.Tensor,
-    #     legal_mask: torch.Tensor,
-    #     scalars: torch.Tensor,
-    # ):
-    #     if not bool(getattr(self.config, "STYLE_REG_ENABLE", False)):
-    #         zero = probs.new_zeros(())
-    #         return zero, zero, zero
-    #     if self._style_target is None:
-    #         zero = probs.new_zeros(())
-    #         return zero, zero, zero
+    def _compute_style_regularizer(
+        self,
+        probs: torch.Tensor,
+        legal_mask: torch.Tensor,
+        scalars: torch.Tensor,
+    ):
+        if not bool(getattr(self.config, "STYLE_REG_ENABLE", False)):
+            zero = probs.new_zeros(())
+            return zero, zero, zero
+        if self._style_target is None:
+            zero = probs.new_zeros(())
+            return zero, zero, zero
 
-    #     abstraction = str(getattr(self.config, "BETTING_ABSTRACTION", "fcpa")).lower()
-    #     if abstraction not in {"fchpa", "fcpha"}:
-    #         zero = probs.new_zeros(())
-    #         return zero, zero, zero
+        abstraction = str(getattr(self.config, "BETTING_ABSTRACTION", "fcpa")).lower()
+        if abstraction not in {"fchpa", "fcpha"}:
+            zero = probs.new_zeros(())
+            return zero, zero, zero
 
-    #     if scalars.dim() != 2 or scalars.shape[1] < 9:
-    #         zero = probs.new_zeros(())
-    #         return zero, zero, zero
+        if scalars.dim() != 2 or scalars.shape[1] < 9:
+            zero = probs.new_zeros(())
+            return zero, zero, zero
 
-    #     preflop_mask = scalars[:, 5] > 0.5
-    #     if not bool(preflop_mask.any().item()):
-    #         zero = probs.new_zeros(())
-    #         return zero, zero, zero
+        preflop_mask = scalars[:, 5] > 0.5
+        if not bool(preflop_mask.any().item()):
+            zero = probs.new_zeros(())
+            return zero, zero, zero
 
-    #     preflop_probs = probs[preflop_mask]
-    #     preflop_legal = legal_mask[preflop_mask]
-    #     preflop_fraction = preflop_probs.shape[0] / max(1, probs.shape[0])
+        preflop_probs = probs[preflop_mask]
+        preflop_legal = legal_mask[preflop_mask]
+        preflop_fraction = preflop_probs.shape[0] / max(1, probs.shape[0])
 
-    #     bucket_idx = self._preflop_bucket_indices()
-    #     ordered = [
-    #         bucket_idx["fold"],
-    #         bucket_idx["call_check"],
-    #         bucket_idx["half_pot"],
-    #         bucket_idx["pot_raise"],
-    #         bucket_idx["allin"],
-    #     ]
-    #     bucket_probs = []
-    #     for idx in ordered:
-    #         if idx is None or idx >= preflop_probs.shape[1]:
-    #             bucket_probs.append(preflop_probs.new_zeros((preflop_probs.shape[0],)))
-    #         else:
-    #             bucket_probs.append(preflop_probs[:, idx])
-    #     pred_dist = torch.stack(bucket_probs, dim=1).mean(dim=0)
-    #     pred_dist = pred_dist / torch.clamp(pred_dist.sum(), min=1e-8)
-    #     pred_dist = torch.clamp(pred_dist, min=1e-8, max=1.0)
+        bucket_idx = self._preflop_bucket_indices()
+        ordered = [
+            bucket_idx["fold"],
+            bucket_idx["call_check"],
+            bucket_idx["half_pot"],
+            bucket_idx["pot_raise"],
+            bucket_idx["allin"],
+        ]
+        bucket_probs = []
+        for idx in ordered:
+            if idx is None or idx >= preflop_probs.shape[1]:
+                bucket_probs.append(preflop_probs.new_zeros((preflop_probs.shape[0],)))
+            else:
+                bucket_probs.append(preflop_probs[:, idx])
+        pred_dist = torch.stack(bucket_probs, dim=1).mean(dim=0)
+        pred_dist = pred_dist / torch.clamp(pred_dist.sum(), min=1e-8)
+        pred_dist = torch.clamp(pred_dist, min=1e-8, max=1.0)
 
-    #     target_dist = torch.as_tensor(
-    #         self._style_target["target_dist"],
-    #         device=pred_dist.device,
-    #         dtype=pred_dist.dtype,
-    #     )
-    #     target_dist = target_dist / torch.clamp(target_dist.sum(), min=1e-8)
-    #     target_dist = torch.clamp(target_dist, min=1e-8, max=1.0)
+        target_dist = torch.as_tensor(
+            self._style_target["target_dist"],
+            device=pred_dist.device,
+            dtype=pred_dist.dtype,
+        )
+        target_dist = target_dist / torch.clamp(target_dist.sum(), min=1e-8)
+        target_dist = torch.clamp(target_dist, min=1e-8, max=1.0)
 
-    #     style_kl = torch.sum(target_dist * (torch.log(target_dist) - torch.log(pred_dist)))
+        style_kl = torch.sum(target_dist * (torch.log(target_dist) - torch.log(pred_dist)))
 
-    #     pot_idx = bucket_idx["pot_raise"]
-    #     half_idx = bucket_idx["half_pot"]
-    #     pot_prob_given_legal = pred_dist.new_zeros(())
-    #     half_prob_given_legal = pred_dist.new_zeros(())
+        pot_idx = bucket_idx["pot_raise"]
+        half_idx = bucket_idx["half_pot"]
+        pot_prob_given_legal = pred_dist.new_zeros(())
+        half_prob_given_legal = pred_dist.new_zeros(())
 
-    #     if pot_idx is not None and pot_idx < preflop_probs.shape[1]:
-    #         pot_legal = preflop_legal[:, pot_idx] > 0.5
-    #         if bool(pot_legal.any().item()):
-    #             pot_prob_given_legal = preflop_probs[pot_legal, pot_idx].mean()
-    #     if half_idx is not None and half_idx < preflop_probs.shape[1]:
-    #         half_legal = preflop_legal[:, half_idx] > 0.5
-    #         if bool(half_legal.any().item()):
-    #             half_prob_given_legal = preflop_probs[half_legal, half_idx].mean()
+        if pot_idx is not None and pot_idx < preflop_probs.shape[1]:
+            pot_legal = preflop_legal[:, pot_idx] > 0.5
+            if bool(pot_legal.any().item()):
+                pot_prob_given_legal = preflop_probs[pot_legal, pot_idx].mean()
+        if half_idx is not None and half_idx < preflop_probs.shape[1]:
+            half_legal = preflop_legal[:, half_idx] > 0.5
+            if bool(half_legal.any().item()):
+                half_prob_given_legal = preflop_probs[half_legal, half_idx].mean()
 
-    #     target_pot = float(self._style_target.get("target_pot_given_legal", 0.0))
-    #     target_half = float(self._style_target.get("target_half_given_legal", 0.0))
-    #     hinge_coef = max(float(getattr(self.config, "STYLE_POT_HINGE_COEF", 0.5)), 0.0)
+        target_pot = float(self._style_target.get("target_pot_given_legal", 0.0))
+        target_half = float(self._style_target.get("target_half_given_legal", 0.0))
+        hinge_coef = max(float(getattr(self.config, "STYLE_POT_HINGE_COEF", 0.5)), 0.0)
 
-    #     pot_hinge = torch.relu(probs.new_tensor(target_pot) - pot_prob_given_legal)
-    #     half_hinge = torch.relu(probs.new_tensor(target_half) - half_prob_given_legal)
-    #     style_hinge = pot_hinge + (0.5 * half_hinge)
+        pot_hinge = torch.relu(probs.new_tensor(target_pot) - pot_prob_given_legal)
+        half_hinge = torch.relu(probs.new_tensor(target_half) - half_prob_given_legal)
+        style_hinge = pot_hinge + (0.5 * half_hinge)
 
-    #     return style_kl, (hinge_coef * style_hinge), probs.new_tensor(float(preflop_fraction))
+        return style_kl, (hinge_coef * style_hinge), probs.new_tensor(float(preflop_fraction))
 
     def _compute_explained_var(self, value_pred: torch.Tensor, scaled_returns: torch.Tensor):
         var_floor = max(float(getattr(self.config, "EXPLAINED_VAR_VAR_FLOOR", 1e-4)), 0.0)

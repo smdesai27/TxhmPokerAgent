@@ -2,6 +2,9 @@ import argparse
 import asyncio
 import os
 import sys
+import threading
+import time
+from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -11,6 +14,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 from poker_rl_agent.environment.openspiel_wrapper import PokerEnv
 from poker_rl_agent.environment.state_representation import StateEncoder
@@ -29,8 +34,75 @@ from .schemas import (
     NewHandResponse,
 )
 
-# Module-level storage for CLI args, read by lifespan.
+# Module-level storage for CLI args (read by lifespan) + server info (read by /health).
 _cli_args: dict = {}
+_server_info: dict = {}
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Lightweight in-memory per-IP rate limiter (no external dependency).
+
+    Protects the public demo from trivial abuse: a global request cap plus a
+    stricter cap on session creation. Honors X-Forwarded-For (Render/Vercel proxy)
+    so the limit keys on the real client, not the proxy. Only the /api/ surface is
+    policed; static assets and the SPA are unrestricted.
+    """
+
+    def __init__(
+        self,
+        app,
+        global_max: int = 90,
+        global_window: float = 60.0,
+        session_create_max: int = 15,
+        session_create_window: float = 300.0,
+    ):
+        super().__init__(app)
+        self._global = (int(global_max), float(global_window))
+        self._session = (int(session_create_max), float(session_create_window))
+        self._hits: dict = {}  # (ip, bucket) -> deque[timestamps]
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _client_ip(request) -> str:
+        fwd = request.headers.get("x-forwarded-for", "")
+        if fwd:
+            return fwd.split(",")[0].strip()
+        return request.client.host if request.client else "unknown"
+
+    def _allow(self, key, limit: int, window: float, now: float):
+        dq = self._hits.get(key)
+        if dq is None:
+            dq = deque()
+            self._hits[key] = dq
+        cutoff = now - window
+        while dq and dq[0] < cutoff:
+            dq.popleft()
+        if len(dq) >= limit:
+            return False, int(dq[0] + window - now) + 1
+        dq.append(now)
+        return True, 0
+
+    async def dispatch(self, request, call_next):
+        path = request.url.path
+        if path.startswith("/api/"):
+            ip = self._client_ip(request)
+            now = time.time()
+            checks = [((ip, "global"), *self._global)]
+            if request.method == "POST" and path.endswith("/api/v1/session"):
+                checks.append(((ip, "session"), *self._session))
+            with self._lock:
+                if len(self._hits) > 10000:  # opportunistic prune to bound memory
+                    for k in [k for k, d in self._hits.items() if not d]:
+                        self._hits.pop(k, None)
+                for key, limit, window in checks:
+                    ok, retry = self._allow(key, limit, window, now)
+                    if not ok:
+                        return JSONResponse(
+                            {"detail": "Rate limit exceeded. Please slow down."},
+                            status_code=429,
+                            headers={"Retry-After": str(retry)},
+                        )
+        return await call_next(request)
 
 # Prefer project-root public/ (canonical source), fall back to bundled static/
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -80,7 +152,9 @@ async def lifespan(app: FastAPI):
     global game_manager
 
     args = _cli_args
-    checkpoint = args.get("checkpoint") or os.environ.get("CHECKPOINT_PATH", "checkpoints/latest.pt")
+    checkpoint = args.get("checkpoint") or os.environ.get(
+        "CHECKPOINT_PATH", "checkpoints/snapshots/interview_ready/interview_ready_1.pt"
+    )
     config_file = args.get("config_file") or os.environ.get("CONFIG_FILE", "configs/training_configs.yaml")
     config_name = args.get("config_name") or os.environ.get("CONFIG_NAME", "default")
     game_mode = args.get("game_mode") or os.environ.get("GAME_MODE", "fchpa")
@@ -147,6 +221,11 @@ async def lifespan(app: FastAPI):
 
     cleanup_task = asyncio.create_task(_cleanup_loop())
 
+    _server_info.update({
+        "checkpoint_label": os.environ.get("CHECKPOINT_LABEL", "") or Path(checkpoint).name,
+        "game_mode": game_mode,
+        "num_actions": checkpoint_num_actions,
+    })
     print(f"Server ready | mode={game_mode} | num_actions={checkpoint_num_actions} | bot_policy={bot_policy}")
     yield
 
@@ -155,6 +234,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AlphaHoldem Poker", lifespan=lifespan)
+
+# Added before CORS so CORS (added below) wraps it and 429 responses still carry
+# the CORS headers a browser needs to surface the error correctly.
+app.add_middleware(
+    RateLimitMiddleware,
+    global_max=90,
+    global_window=60.0,
+    session_create_max=15,
+    session_create_window=300.0,
+)
 
 cors_origins = os.environ.get("CORS_ORIGINS", "")
 origins = cors_origins.split(",") if cors_origins else [
@@ -183,6 +272,9 @@ def health():
         status="ok",
         model_loaded=game_manager is not None,
         active_sessions=game_manager.active_session_count if game_manager else 0,
+        checkpoint_label=_server_info.get("checkpoint_label", ""),
+        num_actions=game_manager.num_actions if game_manager else 0,
+        game_mode=_server_info.get("game_mode", ""),
     )
 
 
@@ -237,9 +329,20 @@ def new_hand(session_id: str):
     return NewHandResponse(game_state=gs, stats=stats)
 
 
+# Serve the single-page frontend and its root-path assets (index.html, app.js,
+# style.css, config.js). Mounted LAST so /api routes and /static take precedence;
+# html=True serves index.html at "/". Fixes asset 404s when the backend (not
+# Vercel) serves the page directly.
+app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="spa")
+
+
 def main():
     parser = argparse.ArgumentParser(description="AlphaHoldem Poker Web Server")
-    parser.add_argument("--checkpoint", type=str, default="checkpoints/latest.pt")
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default="checkpoints/snapshots/interview_ready/interview_ready_1.pt",
+    )
     parser.add_argument("--config_file", type=str, default="configs/training_configs.yaml")
     parser.add_argument("--config_name", type=str, default="default")
     parser.add_argument("--game_mode", type=str, choices=["fullgame", "fcpa", "fcpha", "fchpa"], default="fchpa")
