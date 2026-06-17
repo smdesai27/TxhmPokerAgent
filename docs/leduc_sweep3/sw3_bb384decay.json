@@ -1,0 +1,200 @@
+{
+  "game": "leduc_poker",
+  "policy_loss": "vanilla",
+  "selfplay": "rolling",
+  "delta1": null,
+  "value_clip": null,
+  "obs_dim": 30,
+  "num_actions": 3,
+  "iterations": 1500,
+  "episodes_per_iter": 384,
+  "seed": 42,
+  "recipe": {
+    "clip_eps": 0.2,
+    "gamma": 0.995,
+    "gae_lambda": 0.95,
+    "value_coef": 0.5,
+    "entropy_coef": 0.1,
+    "lr": 0.0003,
+    "epochs": 4,
+    "huber_delta": 10.0
+  },
+  "sweep": {
+    "lr": 0.0003,
+    "entropy_start": 0.1,
+    "entropy_final": 0.002,
+    "clip_eps": 0.2,
+    "gae_lambda": 0.95,
+    "ppo_epochs": 4,
+    "self_fraction": 0.5,
+    "avg_window": 4,
+    "k_best": 8,
+    "episodes_per_iter": 384,
+    "lr_start": 0.0003,
+    "lr_final": 1e-05
+  },
+  "initial_nash_conv": 4.7646171406075535,
+  "final_nash_conv_current": 2.1366756848041915,
+  "final_nash_conv_avg": 1.947820438130388,
+  "best_nash_conv_current": 0.6858983835174031,
+  "best_nash_conv_avg": 0.6865634906727568,
+  "best_avg_improvement_factor": 6.9398055756485855,
+  "curve": [
+    {
+      "iteration": 0,
+      "nash_conv_current": 4.7646171406075535,
+      "nash_conv_avg": 4.7646171406075535
+    },
+    {
+      "iteration": 50,
+      "nash_conv_current": 1.402154986544087,
+      "nash_conv_avg": 2.120140063142598
+    },
+    {
+      "iteration": 100,
+      "nash_conv_current": 1.2776497503069186,
+      "nash_conv_avg": 1.200229599707386
+    },
+    {
+      "iteration": 150,
+      "nash_conv_current": 1.5142606741761333,
+      "nash_conv_avg": 1.3669852531692717
+    },
+    {
+      "iteration": 200,
+      "nash_conv_current": 1.467592580206142,
+      "nash_conv_avg": 1.6927689000605384
+    },
+    {
+      "iteration": 250,
+      "nash_conv_current": 1.4128468346647955,
+      "nash_conv_avg": 1.6323312951792937
+    },
+    {
+      "iteration": 300,
+      "nash_conv_current": 1.9934167042240287,
+      "nash_conv_avg": 1.2200556412432975
+    },
+    {
+      "iteration": 350,
+      "nash_conv_current": 1.146043130667882,
+      "nash_conv_avg": 1.3835747393395197
+    },
+    {
+      "iteration": 400,
+      "nash_conv_current": 1.4083101903046031,
+      "nash_conv_avg": 1.2386128217191197
+    },
+    {
+      "iteration": 450,
+      "nash_conv_current": 1.4002538826466773,
+      "nash_conv_avg": 1.4698309249925834
+    },
+    {
+      "iteration": 500,
+      "nash_conv_current": 1.9381193436775632,
+      "nash_conv_avg": 1.4760722143941047
+    },
+    {
+      "iteration": 550,
+      "nash_conv_current": 0.8843848051619287,
+      "nash_conv_avg": 0.9039884215421284
+    },
+    {
+      "iteration": 600,
+      "nash_conv_current": 1.150400748538079,
+      "nash_conv_avg": 1.3825751841421685
+    },
+    {
+      "iteration": 650,
+      "nash_conv_current": 1.495943887055656,
+      "nash_conv_avg": 1.2848798758543443
+    },
+    {
+      "iteration": 700,
+      "nash_conv_current": 1.2217789111176174,
+      "nash_conv_avg": 1.4055193521572773
+    },
+    {
+      "iteration": 750,
+      "nash_conv_current": 1.7027710151487971,
+      "nash_conv_avg": 1.2296083441778822
+    },
+    {
+      "iteration": 800,
+      "nash_conv_current": 1.3455234743084756,
+      "nash_conv_avg": 1.2824780891505299
+    },
+    {
+      "iteration": 850,
+      "nash_conv_current": 1.6024116036729144,
+      "nash_conv_avg": 1.5014702899204462
+    },
+    {
+      "iteration": 900,
+      "nash_conv_current": 3.381695578900361,
+      "nash_conv_avg": 2.9251990306403566
+    },
+    {
+      "iteration": 950,
+      "nash_conv_current": 2.339957405762404,
+      "nash_conv_avg": 1.9952158968829266
+    },
+    {
+      "iteration": 1000,
+      "nash_conv_current": 1.272455172603424,
+      "nash_conv_avg": 1.3668365354315146
+    },
+    {
+      "iteration": 1050,
+      "nash_conv_current": 1.2451149559845738,
+      "nash_conv_avg": 1.0444951446903454
+    },
+    {
+      "iteration": 1100,
+      "nash_conv_current": 4.921467772040256,
+      "nash_conv_avg": 3.3286199848256666
+    },
+    {
+      "iteration": 1150,
+      "nash_conv_current": 1.91532464823031,
+      "nash_conv_avg": 2.322954958684977
+    },
+    {
+      "iteration": 1200,
+      "nash_conv_current": 0.6858983835174031,
+      "nash_conv_avg": 0.6865634906727568
+    },
+    {
+      "iteration": 1250,
+      "nash_conv_current": 2.41712214104265,
+      "nash_conv_avg": 1.4056262536215258
+    },
+    {
+      "iteration": 1300,
+      "nash_conv_current": 3.9208798426007343,
+      "nash_conv_avg": 3.522231534783888
+    },
+    {
+      "iteration": 1350,
+      "nash_conv_current": 1.9929461924577778,
+      "nash_conv_avg": 2.2288629166517673
+    },
+    {
+      "iteration": 1400,
+      "nash_conv_current": 0.7909438851664665,
+      "nash_conv_avg": 1.1644713150613226
+    },
+    {
+      "iteration": 1450,
+      "nash_conv_current": 1.059277959752344,
+      "nash_conv_avg": 0.7106434531295296
+    },
+    {
+      "iteration": 1500,
+      "nash_conv_current": 2.1366756848041915,
+      "nash_conv_avg": 1.947820438130388
+    }
+  ],
+  "note": "Current-iterate self-play cycles (expected best-response dynamics in imperfect-information games); the averaged (fictitious-play-style) policy is the convergent estimate. Trinal-Clip clip #3 (value-target clip) is a HUNL-chips-scaled variance control and is effectively inert at Leduc's ~14-chip stakes. Exploitability is intractable on full HUNL."
+}

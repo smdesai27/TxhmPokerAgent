@@ -61,10 +61,35 @@ run **cycled hard at the end** (finals 1.7–3.4) — the average reaches its lo
 diverging iterate poisons the recent average. **Instability is now the blocker** (not the floor).
 Seed variance ~0.2. Smaller avg_window (4) helped the best.
 
-### Round 3 (RUNNING) — kill the late cycling via LR annealing (so the policy SETTLES at the low point)
-Add `--lr_final` (linear LR decay). Configs (ent 0.10→0.002, batch 256, avg_window 4, 1500 it):
-`lrdecay42/7/13` (lr 3e-4→1e-5, seeds 42/7/13), `lrdecay_3e5` (→3e-5), `lrdecay_cos`-ish via lower
-final, `entlow` (ent 0.08→0.0). **Results: _pending_.**
+### Round 3 (DONE) — LR annealing (artifacts docs/leduc_sweep3/)
+| config | avg-best (recent window=4) | avg-final | note |
+|---|---|---|---|
+| lrdecay42 (lr 3e-4→1e-5) | **0.67** | 2.33 | new best (7.1×); still cycles |
+| lrdecay13 (seed 13) | 0.68 | 1.35 | |
+| bb384decay (batch 384) | 0.69 | 1.95 | |
+| lrdecay3e5 (→3e-5) | 0.83 | 2.29 | |
+| lrdecay7 (seed 7) | 0.93 | 2.62 | seed outlier (~0.25 variance) |
+| entlow (ent→0) | 1.27 | 2.53 | entropy→0 hurts |
+
+**Finding:** LR annealing lowered the floor (0.81→0.67) but did NOT stop the cycling (finals 1.3–2.6).
+Smaller LR just slows the rotation — in imperfect-info self-play the iterates CYCLE AROUND the
+equilibrium, they don't converge to it. The `avg_window=4` recent average tracks the cycle. **Real
+fix:** average over the FULL post-warmup trajectory (fictitious-play / NFSP-style average), which
+averages OUT the rotation. (R1's avgwin30 looked bad only because at 400 iters the policy was still
+improving; over a long cycling run a full post-warmup average should be low AND stable.)
+
+### Round 4 (RUNNING) — full post-warmup fictitious-play average (the principled convergent estimate)
+Add a one-shot FP-average over all snapshots after `--avg_warmup_frac` (default 0.3), computed at
+the end. Re-run the R3 best cluster (lr-annealed, ent 0.10→0.002, batch 256/384, 1500 it) + seeds,
+reporting `fp_average_nash_conv` as the headline. **Results: _pending_.**
+
+## Best so far
+| round | config | avg-policy NashConv (best) | reduction vs random | notes |
+|---|---|---|---|---|
+| pre | vanilla + rolling, 500 iters | 1.50 | 3.2× | iterate cycles; average converges |
+| R1 | ent10 (entropy 0.10) | 1.21 | 3.9× | lowest floor; still cycles |
+| R2 | combo7 (ent0.10→0.003, batch256) | 0.81 | 5.9× | below 1.0; cycles |
+| **R3** | **lrdecay42 (lr-anneal + ent + batch256)** | **0.67** | **7.1×** | best; recent-avg still cycles → R4 full FP-avg |
 
 ## Best so far
 | round | config | avg-policy NashConv (best) | reduction vs random | notes |
