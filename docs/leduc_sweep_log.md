@@ -46,17 +46,33 @@ bigger batch (lower-variance gradients), and especially a LONGER fictitious-play
 self-play hurts. **Plateau:** everything ~1.2 at 400 iters → likely a vanilla-PPO-self-play floor;
 Round 2 tests longer training + entropy×big-batch×anneal, else escalate to NFSP-style averaging.
 
-### Round 2 (RUNNING) — combine winners + train longer + 2nd-seed confirm
-1200–1600 iters, eval_every 50. Configs: `combo42`/`combo7` (ent 0.10→0.003, batch 256, 1200 it,
-seeds 42/7), `bb384` (ent 0.08→0.003, batch 384), `ent15` (ent 0.15→0.002, batch 192), `long`
-(ent 0.05→0.005, batch 192, 1600 it), `combo_avg4` (combo + avg_window 4). **Results: _pending_.**
+### Round 2 (DONE) — combine winners + train longer + 2nd seed (artifacts docs/leduc_sweep2/)
+| config | avg-best | avg-final | note |
+|---|---|---|---|
+| combo7 (seed 7, ent0.10→0.003, batch256, 1200it) | **0.81** | 2.03 | best so far (~5.9× below random) |
+| combo_avg4 (combo + avg_window 4) | 0.88 | 3.33 | smaller recent avg helps the best |
+| ent15 (0.15→0.002, batch192) | 0.96 | 1.92 | |
+| combo42 (same as combo7, seed 42) | 1.00 | 3.36 | ~0.2 seed variance vs combo7 |
+| long (batch192, 1600it) | 1.04 | 1.67 | |
+| bb384 (batch384) | 1.16 | 3.29 | biggest batch not best |
+
+**Finding:** longer training + high/annealed entropy pushed the best below 1.0 (→0.81), but EVERY
+run **cycled hard at the end** (finals 1.7–3.4) — the average reaches its low mid-run then the
+diverging iterate poisons the recent average. **Instability is now the blocker** (not the floor).
+Seed variance ~0.2. Smaller avg_window (4) helped the best.
+
+### Round 3 (RUNNING) — kill the late cycling via LR annealing (so the policy SETTLES at the low point)
+Add `--lr_final` (linear LR decay). Configs (ent 0.10→0.002, batch 256, avg_window 4, 1500 it):
+`lrdecay42/7/13` (lr 3e-4→1e-5, seeds 42/7/13), `lrdecay_3e5` (→3e-5), `lrdecay_cos`-ish via lower
+final, `entlow` (ent 0.08→0.0). **Results: _pending_.**
 
 ## Best so far
 | round | config | avg-policy NashConv (best) | reduction vs random | notes |
 |---|---|---|---|---|
 | pre | vanilla + rolling, 500 iters | 1.50 | 3.2× | iterate cycles; average converges |
-| R1 | ent10 (entropy 0.10) | **1.21** | 3.9× | lowest floor; still cycles |
+| R1 | ent10 (entropy 0.10) | 1.21 | 3.9× | lowest floor; still cycles |
 | R1 | batch192 | 1.28 | 3.7× | most STABLE (no cycling) |
+| **R2** | **combo7 (ent0.10→0.003, batch256, 1200it, seed7)** | **0.81** | **5.9×** | best; but cycles to 2.0 at end |
 
 ## Prior ablation (context — not part of this sweep)
 Trinal-Clip ≡ vanilla on Leduc (clips never fire on-policy / at this scale); simplified Elo-kBSP
