@@ -132,6 +132,7 @@ def main():
     parser.add_argument("--episodes_per_iter", type=int, default=128)
     parser.add_argument("--eval_every", type=int, default=100)
     parser.add_argument("--br_entropy", type=float, default=0.05)
+    parser.add_argument("--ppo_epochs", type=int, default=0, help="0 -> Config default; higher = stronger best-responder")
     parser.add_argument("--sl_lr", type=float, default=0.001)
     parser.add_argument("--sl_updates", type=int, default=4)
     parser.add_argument("--sl_batch", type=int, default=256)
@@ -143,6 +144,8 @@ def main():
 
     cfg = Config()
     cfg.PPO_ENTROPY_COEF = float(args.br_entropy)
+    if args.ppo_epochs > 0:
+        cfg.PPO_EPOCHS = int(args.ppo_epochs)
     seed = int(args.seed if args.seed is not None else cfg.SEED)
     random.seed(seed)
     np.random.seed(seed)

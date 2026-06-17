@@ -94,11 +94,32 @@ excursions (0.67↔2.6), not a tight orbit around Nash; averaging network params
 excursions gives a muddy mixture, not the equilibrium. Proper fictitious play averages the STRATEGY
 via supervised learning on a reservoir of the agent's actions — i.e. NFSP. Snapshot-averaging ≠ NFSP.
 
-### Round 5 (RUNNING) — NFSP-lite: PPO best-responder + supervised average-policy network
-New script `validate_leduc_nfsp.py`: a PPO best-responder plays against the AVERAGE policy π̄; π̄ is a
-separate net trained by supervised classification on a reservoir of the best-responder's (state,action)
-pairs over all training (the true FP average). Evaluate exploitability of π̄ — the convergent estimate.
-This is the established self-play→Nash method (Heinrich & Silver 2016). **Results: _pending_.**
+### Round 5 (DONE) — NFSP-lite (artifacts docs/leduc_sweep5/)
+| config | π̄ NashConv (best) | note |
+|---|---|---|
+| nfsp_ent10 (BR entropy 0.10) | 1.21 | best NFSP variant |
+| nfsp_2k42 / nfsp_2k7 | 1.49 / 1.49 | 2000 iters |
+| nfsp_sl8 | 1.51 | more SL updates |
+| nfsp_3k | 1.53 | 3000 iters |
+
+**Finding:** NFSP-lite π̄ only reached ~1.2–1.5 — WORSE than the PPO best-checkpoint (0.67). NFSP is
+slow (literature uses millions of steps) and, more importantly, my best-responder is weak (one
+on-policy PPO batch/iter), so π̄ averages weak responses. Higher BR entropy helped (1.21). Fix:
+strengthen the best-responder (more PPO epochs/iter so it actually best-responds) + run much longer.
+
+### Round 6 (RUNNING via sbatch) — NFSP-lite with a STRONG best-responder + long run
+Strengthen the BR (ppo_epochs ↑, episodes/iter ↑, BR entropy 0.10) and run ~5–6k iters; submit via
+`sbatch` (detached, survives SSH drops — R5's controlling SSH was killed). 2 seeds. **Results: _pending_.**
+
+## Best so far
+| round | config | avg-policy NashConv (best) | reduction vs random | notes |
+|---|---|---|---|---|
+| pre | vanilla + rolling, 500 iters | 1.50 | 3.2× | iterate cycles; average converges |
+| R1 | ent10 (entropy 0.10) | 1.21 | 3.9× | lowest floor; still cycles |
+| R2 | combo7 (ent0.10→0.003, batch256) | 0.81 | 5.9× | below 1.0; cycles |
+| R3 | lrdecay42 (lr-anneal + ent + batch256) | **0.67** | **7.1×** | BEST so far; cycling best-checkpoint |
+| R4 | snapshot FP-average | 0.84 | 5.7× | network-averaging worse |
+| R5 | NFSP-lite (ent10) | 1.21 | 3.9× | π̄ undertrained / weak BR → R6 strengthens BR |
 
 ## Best so far
 | round | config | avg-policy NashConv (best) | reduction vs random | notes |
