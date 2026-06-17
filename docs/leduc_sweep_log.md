@@ -107,9 +107,28 @@ slow (literature uses millions of steps) and, more importantly, my best-responde
 on-policy PPO batch/iter), so π̄ averages weak responses. Higher BR entropy helped (1.21). Fix:
 strengthen the best-responder (more PPO epochs/iter so it actually best-responds) + run much longer.
 
-### Round 6 (RUNNING via sbatch) — NFSP-lite with a STRONG best-responder + long run
-Strengthen the BR (ppo_epochs ↑, episodes/iter ↑, BR entropy 0.10) and run ~5–6k iters; submit via
-`sbatch` (detached, survives SSH drops — R5's controlling SSH was killed). 2 seeds. **Results: _pending_.**
+### Round 6 (DONE via sbatch) — strong-BR (ppo_epochs 10) long NFSP, 5000 iters
+| config | π̄ NashConv best → final | note |
+|---|---|---|
+| nfsp6_7 (seed 7) | **0.78 → 0.81** | STABLE (final ≈ best); 6.2× below random |
+| nfsp6_42 (seed 42) | 0.83 → 0.94 | stable ~0.8–0.9 |
+
+**Finding:** a strong best-responder + 5000 iters made NFSP-lite π̄ converge to a STABLE ~0.78–0.83
+(vs R5's undertrained 1.21). Unlike the PPO iterate (which cycles), this is a genuinely converged
+exploitability estimate — a cleaner headline than the cycling 0.67 best-checkpoint. Still above the
+0.45 target, and the curve was still drifting down at 5k iters → NFSP just needs more iterations.
+
+### Round 7 (RUNNING via sbatch) — long NFSP (~20k iters) for a clearly-respectable stable number
+Same strong-BR NFSP, 20000 iters, more SL (sl_updates 20, batch 1024, reservoir 1M), seeds 7/42.
+Detached sbatch. Decision point: if this reaches ≤~0.5 stable → report it; if it plateaus ~0.7–0.8 →
+conclude and write up the honest 7-round investigation (this is an off-track project). **Results: _pending_.**
+
+## Best so far
+| round | config | NashConv (best) | reduction vs random | notes |
+|---|---|---|---|---|
+| pre | vanilla + rolling, 500 iters | 1.50 | 3.2× | iterate cycles |
+| R3 | lrdecay42 (PPO, lr-anneal) | 0.67 | 7.1× | lowest, but a CYCLING best-checkpoint |
+| **R6** | **NFSP-lite (strong BR, 5k it, seed7)** | **0.78** | **6.2×** | STABLE/converged — cleanest headline |
 
 ## Best so far
 | round | config | avg-policy NashConv (best) | reduction vs random | notes |
