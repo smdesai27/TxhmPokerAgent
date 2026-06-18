@@ -24,11 +24,19 @@ class LeagueManager:
         init_rating: float = 1200.0,
         k_factor: float = 24.0,
         pfsp_beta: float = 2.0,
+        pfsp_mode: str = "loss",
     ):
         self.k_best = k_best
         self.init_rating = init_rating
         self.k_factor = k_factor
         self.pfsp_beta = pfsp_beta
+        # PFSP opponent-sampling mode. "loss" (default, correct): weight = (1 - P[current beats opp])
+        # **beta, the win-probability GAP from the Elo logistic — adaptive to the learner's current
+        # rating and diversity-preserving (matches the validated EloPool in
+        # validate_leduc_exploitability.py). "legacy": the old weight ∝ exp(rating/beta), which keys
+        # off ABSOLUTE rating, ignores current_rating, and with beta=2 at Elo-scale gaps saturates to
+        # ~always picking the single highest-rated snapshot (no diversity, non-adaptive). Kept for A/B.
+        self.pfsp_mode = str(pfsp_mode)
 
         self.entries: List[LeagueEntry] = []
         self.current_rating = init_rating
@@ -69,14 +77,29 @@ class LeagueManager:
         return None
 
     def sample_opponent(self) -> Optional[LeagueEntry]:
-        #pfsp sampling based on ratings (form alphastar), stronger = more likely to sample
+        """Prioritized Fictitious Self-Play opponent sampling.
+
+        "loss" (default, correct): weight = (1 - P[current beats opp])**beta, where P comes from the
+        Elo logistic on the GAP (opp.rating - current_rating). This concentrates on the learner's
+        hardest current matchups, is ADAPTIVE (re-weights as the learner improves), and preserves a
+        smooth distribution over the pool. Matches the validated EloPool in
+        validate_leduc_exploitability.py.
+
+        "legacy": the original weight ∝ exp(rating/beta) on ABSOLUTE rating. It ignores current_rating
+        and, with beta=2 at Elo-scale rating gaps, saturates to ~always selecting the single
+        highest-rated snapshot — degenerate (no opponent diversity, non-adaptive). Kept for an A/B.
+        """
         if not self.entries:
             return None
 
         ratings = np.array([entry.rating for entry in self.entries], dtype=np.float64)
-        scaled = ratings / max(self.pfsp_beta, 1e-6)
-        scaled = scaled - np.max(scaled)
-        probs = np.exp(scaled)
+        if self.pfsp_mode == "legacy":  # old: absolute-rating softmax (near-argmax, non-adaptive)
+            scaled = ratings / max(self.pfsp_beta, 1e-6)
+            scaled = scaled - np.max(scaled)
+            probs = np.exp(scaled)
+        else:  # "loss" (default, correct): win-probability-gap weighting, adaptive + diverse
+            p_win = 1.0 / (1.0 + 10.0 ** ((ratings - self.current_rating) / 400.0))
+            probs = np.power(1.0 - p_win, self.pfsp_beta) + 1e-6
         probs = probs / probs.sum()
         idx = np.random.choice(len(self.entries), p=probs)
         return self.entries[int(idx)]
