@@ -44,6 +44,13 @@ class Config:
     ALGO: str = "ppo_ksp"
     CFR_ITERATIONS: int = 100000  # kept for backwards compatibility with scripts
     ROLLOUT_EPISODES: int = 64
+    # S1 GPU-scale: run ROLLOUT_BATCH_GAMES self-play games in lockstep and batch their neural
+    # decisions into one forward pass (vs serial batch=1). Default OFF -> serial path, bit-identical.
+    USE_VECTORIZED_COLLECTOR: bool = False
+    ROLLOUT_BATCH_GAMES: int = 256
+    # S3 PFSP opponent sampling: "loss" (correct, adaptive win-prob-gap) | "legacy" (old absolute-rating
+    # softmax, kept for A/B). See LeagueManager.sample_opponent.
+    PFSP_MODE: str = "loss"
     SELF_PLAY_GAMES: int = 20  # compatibility field for old configs/scripts
     PPO_EPOCHS: int = 4
     PPO_MINIBATCH_SIZE: int = 256

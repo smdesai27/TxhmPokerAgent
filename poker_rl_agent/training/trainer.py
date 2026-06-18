@@ -104,6 +104,7 @@ class Trainer:
             init_rating=self.config.LEAGUE_INIT_RATING,
             k_factor=self.config.LEAGUE_K_FACTOR,
             pfsp_beta=self.config.PFSP_BETA,
+            pfsp_mode=getattr(self.config, "PFSP_MODE", "loss"),
         )
         #add inttial model to make sure league is never empty
         self.league.add_snapshot(self.model, step=0, score=0.0)
