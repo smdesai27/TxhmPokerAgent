@@ -210,6 +210,24 @@ if it still wanders, (b) all-actions advantage (bigger lift) or pivot to faithfu
 lower number. **Units note:** OpenSpiel NashConv = sum of both players' BR gains ≈ 2× single-player
 exploitability; published NFSP ~0.06 ≈ ~0.12 on this axis; CFR+ ~0.004–0.02.
 
+## Round 9 (RUNNING via sbatch) — MMD proximal fix + faithful NFSP (both, user-requested)
+Fixes for the two methods, run in parallel (commit 6c8d0a8). All seed 7, detached sbatch (jobs
+3316357–66). Artifacts → docs/leduc_r9_*/ when done.
+
+**(A) MMD + proximal (`--mmd_prox_coef`):** R8's magnet-only MMD wandered because it used PPO's clip
+(over 4–10 epochs) as the trust region. Added an explicit `(1/η)·KL(π‖π_old)` mirror-descent proximal
+term + few epochs. **Smoke confirmed the wandering is GONE** — the current iterate now descends smoothly
+& monotonically (5.05→3.86, final==best) — but stable⇒slow, so these run 10k iters. Sweep spans the
+speed/stability tradeoff: prox ∈ {0.1,0.3}, epochs ∈ {1,3}, α ∈ {0.05,0.1,0.2}, K=100, lr ∈ {3e-4,1e-3}.
+
+**(B) faithful NFSP (`--anticipatory_eta`):** R5–R7 ran at effective η=1 (always BR), which H&S show
+plateaus. Added anticipatory η (learner plays BR w.p. η, feeding PPO+reservoir; else π̄, recording
+nothing = reservoir hygiene). Smoke: π̄ descends monotone. Sweep: η ∈ {0.1,0.2}, episodes 256–512,
+strong BR (ppo_epochs 10), reservoir 2M, 8k–14k iters.
+
+**Looking for:** MMD — a LOW, STABLE current iterate (final≈best, the on-thesis last-iterate win);
+NFSP — π̄ well below R7's 0.56. **Results: _pending_.**
+
 ## Prior ablation (context — not part of this sweep)
 Trinal-Clip ≡ vanilla on Leduc (clips never fire on-policy / at this scale); simplified Elo-kBSP
 underperformed rolling. See HANDOFF.md §5.
