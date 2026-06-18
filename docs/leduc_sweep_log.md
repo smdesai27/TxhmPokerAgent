@@ -192,10 +192,23 @@ Also added the honest anchor line: `leduc_cfr_anchor.py` (tabular CFR/CFR+, Open
 **Smoke (alpha=0.1, K=10, 150 iters):** current-iterate NashConv descended MONOTONICALLY 5.05 → 1.55
 (no cycling, no NaN) — mechanism validated. **Sweep (jobs 3313390–97, seed 7, 4000 iters):** alpha ∈
 {0.05,0.1,0.2,0.3} × K ∈ {1,10,50,100,500}, plus a strong-BR variant (ppo_epochs 10, entropy 0.02).
-**Looking for:** the lowest STABLE current-iterate NashConv (final ≈ best). Target ~0.05–0.15 (would be
-~4–10× below R7's 0.56 average and, crucially, a CONVERGED ITERATE — the on-thesis result).
-**Units note (state in writeup):** OpenSpiel NashConv = sum of both players' BR gains ≈ 2× single-player
-exploitability; published NFSP ~0.06 single-player ≈ ~0.12 on this axis; CFR+ ~0.004–0.02. **Results: _pending_.**
+Artifacts: docs/leduc_mmd_sweep/.
+
+**RESULT (honest negative — first attempt did NOT beat existing results):** the MMD iterate crashes
+5.05→~1–2 in the first 200 iters but then **WANDERS in a noisy 0.7–3.1 band** for the rest of training —
+it does NOT converge to a low fixed point. Best transient current-iterate **0.72** (α=0.2,K=500) but
+final 1.68; best average 0.80; all 8 configs UNSTABLE (final ≫ best). vs references: R3 PPO best-ckpt
+0.67, R7 NFSP avg **0.56**, CFR+ ~0.05. So MMD **damps the catastrophic divergence** (plain PPO blew up to
+4.88; MMD stays bounded ~1–2) but does **not** give clean last-iterate convergence at these settings.
+
+**Diagnosis:** dominated by gradient/advantage VARIANCE. Two likely causes: (1) I rely on PPO's *clip* as
+the mirror-descent KL-to-previous-iterate proximal term — but ran 4–10 PPO epochs/iter, so the policy
+moves too far each step (true MMD ≈ a small/single mirror step with an explicit KL-to-π_old). (2) The
+*sampled* GAE advantage is far noisier than the all-actions counterfactual values tabular MMD/NeuRD use.
+**Next:** (a) add an explicit `(1/η)·KL(π‖π_old)` proximal term + drop to 1–2 epochs/iter (cheap, ~15 LOC);
+if it still wanders, (b) all-actions advantage (bigger lift) or pivot to faithful-NFSP (rank 2) for a safe
+lower number. **Units note:** OpenSpiel NashConv = sum of both players' BR gains ≈ 2× single-player
+exploitability; published NFSP ~0.06 ≈ ~0.12 on this axis; CFR+ ~0.004–0.02.
 
 ## Prior ablation (context — not part of this sweep)
 Trinal-Clip ≡ vanilla on Leduc (clips never fire on-policy / at this scale); simplified Elo-kBSP
