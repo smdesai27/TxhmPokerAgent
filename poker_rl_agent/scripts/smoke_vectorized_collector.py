@@ -43,6 +43,7 @@ def stats(episodes, num_actions):
         "transitions": int(n_tr),
         "tr_per_ep": n_tr / max(1, len(episodes)),
         "mean_return": float(np.mean(rets)) if rets else 0.0,
+        "ret_std": float(np.std(rets)) if rets else 0.0,
         "action_dist": (act / max(1.0, act.sum())).round(3).tolist(),
         "all_finite": bool(finite),
     }
@@ -93,11 +94,23 @@ def main():
     l1 = float(np.abs(np.array(s_vec["action_dist"]) - np.array(s_ser["action_dist"])).sum())
     print(f"action_dist L1 distance = {l1:.3f}")
 
+    # mean_return parity is a STATISTICAL test: the two paths draw independent samples of episodes
+    # (RNG consumption order differs), so compare means within the combined standard error, not an
+    # absolute bb threshold (HUNL hands swing hundreds of bb -> per-episode return variance is large).
+    import math
+    sem_ser = s_ser["ret_std"] / math.sqrt(max(1, s_ser["episodes"]))
+    sem_vec = s_vec["ret_std"] / math.sqrt(max(1, s_vec["episodes"]))
+    combined_sem = math.sqrt(sem_ser ** 2 + sem_vec ** 2)
+    diff = abs(s_vec["mean_return"] - s_ser["mean_return"])
+    nsigma = diff / max(combined_sem, 1e-9)
+    print(f"mean_return: ser={s_ser['mean_return']:.3f}+/-{sem_ser:.3f}  "
+          f"vec={s_vec['mean_return']:.3f}+/-{sem_vec:.3f}  diff={diff:.3f}  ({nsigma:.1f} sigma)")
+
     ok = True
     ok &= s_vec["transitions"] > 0 and s_ser["transitions"] > 0
     ok &= s_vec["all_finite"] and s_ser["all_finite"]
     ok &= abs(s_vec["tr_per_ep"] - s_ser["tr_per_ep"]) < 0.5 * max(s_ser["tr_per_ep"], 1.0)
-    ok &= abs(s_vec["mean_return"] - s_ser["mean_return"]) < 0.75
+    ok &= nsigma < 4.0          # means agree within 4 combined-SEM (statistical parity)
     ok &= l1 < 0.25
     print("PARITY_SMOKE:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
