@@ -118,52 +118,65 @@ strengthen the best-responder (more PPO epochs/iter so it actually best-responds
 exploitability estimate — a cleaner headline than the cycling 0.67 best-checkpoint. Still above the
 0.45 target, and the curve was still drifting down at 5k iters → NFSP just needs more iterations.
 
-### Round 7 (RUNNING via sbatch) — long NFSP (~20k iters) for a clearly-respectable stable number
-Same strong-BR NFSP, 20000 iters, more SL (sl_updates 20, batch 1024, reservoir 1M), seeds 7/42.
-Detached sbatch. Decision point: if this reaches ≤~0.5 stable → report it; if it plateaus ~0.7–0.8 →
-conclude and write up the honest 7-round investigation (this is an off-track project). **Results: _pending_.**
+### Round 7 (DONE via sbatch) — long NFSP-lite (~20k iters), seeds 7/42; artifacts docs/leduc_sweep7/
+Strong-BR NFSP-lite, 20000 iters, more SL (sl_updates 20, batch 1024, reservoir 1M), br_entropy 0.10.
+| seed | π̄ NashConv: init → final (lowest observed) | vs random 4.76 | curve shape |
+|---|---|---|---|
+| 7  | 4.83 → **0.538** (lowest 0.538) | 8.85× | steep drop to ~0.66 by 5k; noisy band 0.61–0.70 through 16k; dips to 0.538 (with an UP-step at 19k) |
+| 42 | 4.54 → 0.588 (lowest 0.568 @17k) | 8.10× | drop to ~0.74 by 6k; flattens 0.57–0.59 from 13k; ticks UP 0.568→0.588 at the very end |
 
-## Best so far
-| round | config | NashConv (best) | reduction vs random | notes |
-|---|---|---|---|---|
-| pre | vanilla + rolling, 500 iters | 1.50 | 3.2× | iterate cycles |
-| R3 | lrdecay42 (PPO, lr-anneal) | 0.67 | 7.1× | lowest, but a CYCLING best-checkpoint |
-| **R6** | **NFSP-lite (strong BR, 5k it, seed7)** | **0.78** | **6.2×** | STABLE/converged — cleanest headline |
+**Finding:** 4× more iterations than R6 pushed π̄ to **final 0.538 / 0.588 (mean 0.56)** — the lowest and the
+only genuinely **non-divergent** (vs the cycling PPO iterate) estimate of the campaign. The curve is **broadly
+decreasing then plateauing with local fluctuations** — it stops cycling and settles into a noisy band; it does
+**NOT** monotonically descend and does **NOT** converge to Nash. **0.56 is ~8× below random (4.76) but still
+~9× ABOVE tuned NFSP (~0.06) and far from Nash (0).**
 
-## Best so far
-| round | config | avg-policy NashConv (best) | reduction vs random | notes |
-|---|---|---|---|---|
-| pre | vanilla + rolling, 500 iters | 1.50 | 3.2× | iterate cycles; average converges |
-| R1 | ent10 (entropy 0.10) | 1.21 | 3.9× | lowest floor; still cycles |
-| R2 | combo7 (ent0.10→0.003, batch256) | 0.81 | 5.9× | below 1.0; cycles |
-| R3 | lrdecay42 (lr-anneal + ent + batch256) | **0.67** | **7.1×** | BEST so far; cycling best-checkpoint |
-| R4 | snapshot FP-average | 0.84 | 5.7× | network-averaging worse |
-| R5 | NFSP-lite (ent10) | 1.21 | 3.9× | π̄ undertrained / weak BR → R6 strengthens BR |
+## DECISION: loop concluded — report as METHODOLOGY, not a headline number
+Verified by a 4-lens adversarial review (game-theory / stats-rigor / skeptic / recruiter; unanimous verdict
+`reframe_as_methodology_not_result`). The number 0.54–0.59 on Leduc is **not impressive on its own**: Leduc is
+a solved 936-state game, tabular CFR hits ~0 in seconds, tuned NFSP reaches ~0.06. **The credibility is the
+METHOD, not the magnitude.** Stop point reached (NFSP-lite is the principled fix and it stabilized; chasing
+≤0.45 would not change the story and this is an off-track project).
 
-## Best so far
-| round | config | avg-policy NashConv (best) | reduction vs random | notes |
-|---|---|---|---|---|
-| pre | vanilla + rolling, 500 iters | 1.50 | 3.2× | iterate cycles; average converges |
-| R1 | ent10 (entropy 0.10) | 1.21 | 3.9× | lowest floor; still cycles |
-| R2 | combo7 (ent0.10→0.003, batch256) | 0.81 | 5.9× | below 1.0; cycles |
-| R3 | lrdecay42 (lr-anneal + ent + batch256) | **0.67** | **7.1×** | best so far; recent-avg, cycles |
-| R4 | FP snapshot-average | 0.84 (best FP) | 5.7× | snapshot-averaging worse than R3; → NFSP |
+**Verified headline (use verbatim — survives all 4 lenses):**
+> On Leduc poker — a 2-player game small enough that exact, ungameable exploitability (NashConv) is computable
+> — a from-scratch PyTorch self-play stack reproduces the textbook failure-and-fix: the raw PPO self-play
+> iterate **cycles** (best checkpoint 0.67, final iterate diverges to ~1.3–2.6) and averaging network
+> **parameters fails** (0.84–1.28), while only **NFSP-style strategy-averaging** stops cycling, settling to a
+> stable, non-divergent NashConv of **~0.54–0.59** across two seeds (random ≈4.76, tuned NFSP ≈0.06, Nash = 0).
+> Reported as a methodology + honest-ablation result, not a competitive solver number.
 
-## Best so far
-| round | config | avg-policy NashConv (best) | reduction vs random | notes |
-|---|---|---|---|---|
-| pre | vanilla + rolling, 500 iters | 1.50 | 3.2× | iterate cycles; average converges |
-| R1 | ent10 (entropy 0.10) | 1.21 | 3.9× | lowest floor; still cycles |
-| R2 | combo7 (ent0.10→0.003, batch256) | 0.81 | 5.9× | below 1.0; cycles |
-| **R3** | **lrdecay42 (lr-anneal + ent + batch256)** | **0.67** | **7.1×** | best; recent-avg still cycles → R4 full FP-avg |
+**Where the real credibility is:** (1) choosing an EXACT, deterministic, opponent-independent, ungameable
+metric on a game where it's tractable — precisely because HUNL exploitability is intractable; (2) a
+correctly-reasoned 3-way ablation over ~35 configs isolating WHY strategy-averaging works; (3) honest negatives
+reported not buried (snapshot net-averaging rejected; NFSP-lite initially WORSE than the PPO checkpoint;
+Trinal-Clip ≡ vanilla at Leduc scale; Elo-kBSP underperformed rolling); (4) engineering fidelity — the Leduc
+harness reuses the project's own RolloutBuffer/GAE, post-forward masked logits, and the SAME PPO
+hyperparameters as the HUNL configs, so it exercises the real recipe.
 
-## Best so far
-| round | config | avg-policy NashConv (best) | reduction vs random | notes |
-|---|---|---|---|---|
-| pre | vanilla + rolling, 500 iters | 1.50 | 3.2× | iterate cycles; average converges |
-| R1 | ent10 (entropy 0.10) | 1.21 | 3.9× | lowest floor; still cycles |
-| R1 | batch192 | 1.28 | 3.7× | most STABLE (no cycling) |
-| **R2** | **combo7 (ent0.10→0.003, batch256, 1200it, seed7)** | **0.81** | **5.9×** | best; but cycles to 2.0 at end |
+**DO NOT SAY (writeup landmines — verified by review):**
+- ❌ "converges" → ✅ "stabilizes / plateaus / stops cycling and settles" (data plateau ~0.55, ~9× above Nash).
+- ❌ "monotonically descending" → ✅ "broadly decreasing then plateauing with local fluctuations" (seed7 up-steps at 19k; seed42 rises at the end — monotonicity is FALSE).
+- ❌ "8.98× / x below init" (per-seed random-init denominator = double cherry-pick) → ✅ only "~8× below random 4.76".
+- ❌ headline the best 0.538 → ✅ report BOTH finals 0.538/0.588 (mean 0.56); pre-commit to FINAL for both seeds.
+- ❌ a multiplier without both anchors → ✅ always "~8× below random AND ~9× above tuned NFSP (0.06)".
+- ❌ "respectable / impressive" in the prose (self-grading) → ✅ state what was done, let the reader judge.
+- ❌ "reproduces the RL-vs-CFR gap" (overstates scope) → ✅ "empirically illustrates, on a game where exploitability is exactly computable, why naive self-play needs the averaging CFR/NFSP were designed around".
+- ❌ attach 0.54 to the HUNL/AlphaHoldem agent → ✅ it's a LEDUC rigor probe for the self-play DYNAMICS; HUNL exploitability is intractable and was never measured.
+- ❌ bare "NFSP" → ✅ "NFSP-lite / NFSP-style" (single on-policy PPO BR, no target net / anticipatory dynamics; minimal demonstrator, so the 0.06 gap is apples-to-oranges by design).
+- Note: the PPO best-checkpoint (0.67) is competitive in MAGNITUDE at equal compute; NFSP-lite's win is STABILITY/non-divergence, not a lower number.
+
+## Best so far (FINAL — authoritative; supersedes the per-round tables above)
+| round | config | avg/π̄ NashConv | vs random 4.76 | stability | notes |
+|---|---|---|---|---|---|
+| pre | vanilla + rolling, 500 it | 1.50 | 3.2× | cycles | current iterate |
+| R1 | ent10 (entropy 0.10) | 1.21 | 3.9× | cycles | lowest floor at 400 it |
+| R2 | combo7 (ent anneal + batch256) | 0.81 | 5.9× | cycles | finals 1.7–3.4 |
+| R3 | lrdecay42 (lr-anneal) | 0.67 | 7.1× | cycles | lowest PPO best-checkpoint; final diverges 1.3–2.6 |
+| R4 | snapshot net FP-average | 0.84 | 5.7× | — | network-averaging FAILS (worse than R3) |
+| R5 | NFSP-lite (weak BR) | 1.21 | 3.9× | — | π̄ undertrained |
+| R6 | NFSP-lite (strong BR, 5k it) | 0.78 | 6.1× | stable | first non-divergent estimate |
+| **R7** | **NFSP-lite (strong BR, 20k it)** | **0.538 / 0.588 (mean 0.56)** | **~8×** | **stable, non-divergent** | lowest + only non-cycling; still ~9× above tuned NFSP (0.06) |
 
 ## Prior ablation (context — not part of this sweep)
 Trinal-Clip ≡ vanilla on Leduc (clips never fire on-policy / at this scale); simplified Elo-kBSP

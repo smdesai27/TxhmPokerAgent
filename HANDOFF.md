@@ -127,10 +127,15 @@ numbers.** Win-rate vs this baseline can be inflated by over-folding (that's how
   curriculum, served demo); an automated behavior-gate eval harness that **caught policy collapse**
   and **refused to promote a regressing run**; champion learned a balanced non-degenerate strategy;
   engineering judgment (LayerNorm-not-BatchNorm for PPO stability, post-forward masking, near-zero
-  head init, STRICT_ABSTRACTION fail-fast); validated the learning method converges on Leduc (§5).
+  head init, STRICT_ABSTRACTION fail-fast); showed on Leduc (exact exploitability) that the raw PPO
+  self-play iterate cycles while NFSP-style **strategy-averaging** is the only non-divergent estimator
+  — a methodology/ablation result, ~8× below random (§5.1).
 - ❌ CANNOT say: "reproduced AlphaHoldem" (→ "inspired by"); "beat a solver by ~900 bb/100"
   (→ "vs an under-trained MCCFR / scripted baselines"); "Trinal-Clip PPO" (not in the main trainer);
   present `latest.pt` numbers (gate-failing); cite league Elo as absolute strength.
+- ❌ CANNOT say about Leduc: "converges (to Nash)" (→ "stabilizes/plateaus"); the Leduc NashConv
+  ~0.54–0.59 is NOT impressive on its own (tuned NFSP ≈0.06, CFR ≈0) and must NEVER attach to the
+  HUNL agent — it's a rigor probe for the self-play dynamics. Full landmine list in §5.1.
 
 ---
 
@@ -230,6 +235,46 @@ Artifacts pulled into the repo: [docs/leduc_ablation/](docs/leduc_ablation/) (4 
 Net: the headline rigor result stands (the recipe drives exploitability ~3× down; iterate cycles,
 average converges). The ablations are honest null/negative results that show understanding of the
 regimes where the paper's contributions actually bite — good writeup material, not a strength claim.
+
+### 5.1 — Auto-research loop (7 rounds): the strongest result + VERIFIED framing
+After the 500-iter baseline above, I ran a 7-round hyperparameter/algorithm sweep (~35 configs) to
+minimize Leduc exploitability. **Full round-by-round log + the authoritative "Best so far" table:**
+[docs/leduc_sweep_log.md](docs/leduc_sweep_log.md). Scripts: `validate_leduc_exploitability.py`
+(PPO sweeps) and `validate_leduc_nfsp.py` (NFSP-lite). Artifacts: `docs/leduc_sweep1..7/`,
+`docs/leduc_ablation/`.
+
+**The arc (this IS the story to write up):**
+1. Tuned PPO self-play (entropy + big batch + LR-anneal) drove the *best checkpoint* to NashConv
+   **0.67** (R3, ~7.1× below random) — but the current iterate **cycles**; its final diverges to 1.3–2.6.
+2. Averaging snapshot **networks** over the trajectory **FAILED** (R4, 0.84–1.28) — param/output
+   averaging over wide excursions gives a muddy mixture, not the equilibrium.
+3. **Strategy**-averaging (NFSP-lite, Heinrich & Silver 2016: a strong PPO best-responder vs a
+   supervised average-policy net π̄ trained on a 1M reservoir of BR actions) is the principled fix
+   and the only **non-divergent** estimator. R7 (20k iters, seeds 7/42): π̄ NashConv **final 0.538 /
+   0.588 (mean 0.56)**. Artifacts: `docs/leduc_sweep7/sw7_nfsp7_{7,42}.json`.
+
+**VERIFIED VERDICT (4-lens adversarial review — game-theory/stats/skeptic/recruiter; unanimous
+`reframe_as_methodology_not_result`):** the *number* 0.54–0.59 is NOT impressive on its own — Leduc
+is a solved 936-state game (CFR → ~0 in seconds; tuned NFSP → ~0.06). **The credibility is the METHOD,
+not the magnitude.** Report it as a methodology + honest-ablation result.
+
+**Verified headline (use ~verbatim):** "On Leduc poker — small enough that exact, ungameable
+exploitability (NashConv) is computable — a from-scratch PyTorch self-play stack reproduces the
+textbook failure-and-fix: the raw PPO iterate **cycles** (best 0.67, final diverges to ~1.3–2.6) and
+network-parameter averaging **fails** (0.84–1.28), while only **NFSP-style strategy-averaging** stops
+cycling, settling to a stable NashConv of **~0.54–0.59** across two seeds (random ≈4.76, tuned NFSP
+≈0.06, Nash = 0)."
+
+**WRITEUP LANDMINES — DO NOT SAY (verified by review; full list in the sweep log's DECISION section):**
+- ❌ "converges" → ✅ "stabilizes / plateaus / stops cycling" (it plateaus ~0.55, ~9× above Nash; not near-equilibrium).
+- ❌ "monotonically descending" → ✅ "broadly decreasing then plateauing with local fluctuations" (seed7 up-steps at 19k; seed42 *rises* at the end — monotonicity is factually FALSE).
+- ❌ headline the best 0.538, or "8.98× below init" (per-seed-init denominator) → ✅ report BOTH finals 0.538/0.588 (mean 0.56); ratios only vs the fixed random 4.76 ("~8× below random").
+- ❌ a reduction multiplier without both anchors → ✅ always "~8× below random AND ~9× ABOVE tuned NFSP (0.06)".
+- ❌ "respectable / impressive" in prose (self-grading) → ✅ state what was done; let the reader judge.
+- ❌ "reproduces the RL-vs-CFR gap" → ✅ "empirically illustrates, on a game where exploitability is exactly computable, why naive self-play needs the averaging CFR/NFSP were designed around".
+- ❌ attach 0.54 to the HUNL/AlphaHoldem agent → ✅ it's a LEDUC rigor probe; HUNL exploitability is intractable and was never measured.
+- ❌ bare "NFSP" → ✅ "NFSP-lite" (single on-policy PPO BR, no target net/anticipatory dynamics; minimal demonstrator, so the 0.06 gap is apples-to-oranges by design).
+- Note: PPO's best-checkpoint 0.67 is competitive in MAGNITUDE at equal compute; NFSP-lite's win is STABILITY/non-divergence, not a lower number.
 
 **To run/reproduce the ablation (OSCAR):** `rsync` the repo source to
 `/oscar/scratch/smdesai/leduc_verify/`, then `bash` a runner that `srun`s the 4 variants (see
