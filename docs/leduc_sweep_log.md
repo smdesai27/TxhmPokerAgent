@@ -244,7 +244,32 @@ crash. Sweep (jobs 3318771–76, seed 7, 10k iters): τ ∈ {0.005,0.01,0.02} ×
 no-refresh control (constant magnet). **This is the last cheap lever for the on-thesis last-iterate win;**
 if EMA still doesn't give a LOW STABLE iterate, the remaining fix is structural (all-actions advantage /
 Deep CFR) — out of scope for this off-track project → conclude and write up the honest investigation.
-**Results: _pending_.**
+
+**RESULT (negative — artifacts docs/leduc_r9/r10_mmd_*.json):** the EMA magnet did NOT fix it. All 6
+configs still UNSTABLE: best transient current 0.80 (the no-refresh control), finals 1.0–3.3. Crucially,
+even the **no-refresh constant magnet wanders** (dips to 0.99 but spikes to 2.45) — so the instability is
+**NOT the refresh schedule**; it is intrinsic to sampled-advantage MMD on this stack. The iterate FINDS
+low points (~0.9–1.0) but cannot HOLD them. Decision point reached → MMD investigation concluded.
+
+## CONCLUSION — loop closed (R1–R10); best reported result = R7 NFSP π̄ 0.56
+The "lower number / converged iterate" push (R8 MMD hard-refresh, R9 MMD+prox & faithful-NFSP, R10 MMD
+EMA/no-refresh) did NOT beat R7. Honest final state on the exact-exploitability axis (random 4.76, Nash 0):
+| approach | NashConv | converged? |
+|---|---|---|
+| tabular CFR+ (anchor, NOT RL) | ~0.05 | yes (different paradigm) |
+| **NFSP-lite π̄ (R7, η=1, 20k)** | **0.56** | **yes — best reported** |
+| PPO best-checkpoint (R3) | 0.67 | no (cycles) |
+| MMD iterate (R8–R10, best transient) | ~0.72–0.80 | **no (wanders ~0.9–2.5)** |
+| faithful NFSP η=0.1 (R9, undertrained) | 0.73 @8k | converging, data-starved |
+
+**The MMD finding is a genuine, reportable negative:** regularization (MMD/NashPG-as-PPO) reliably **damps
+the catastrophic divergence** (plain PPO iterate → 4.88; MMD stays bounded ~1–2.5) but does **NOT** achieve
+clean last-iterate convergence to low exploitability with a SAMPLED advantage — across hard-refresh, EMA,
+and no-refresh magnets and α/τ/prox/epoch sweeps. This matches the literature: clean MMD/R-NaD/NeuRD results
+use **all-actions counterfactual values** (the variance-reducing ingredient our harness lacks); adding that
+is Deep-CFR-scale work, out of scope here. **Recommendation: write up the honest R1–R10 investigation.**
+Writeup landmines from the R7 review (don't say "converges" for the iterate, report both seeds, units ≈2×,
+never attach a Leduc number to the HUNL agent) all still apply. See HANDOFF.md §5.1.
 
 ## Prior ablation (context — not part of this sweep)
 Trinal-Clip ≡ vanilla on Leduc (clips never fire on-policy / at this scale); simplified Elo-kBSP

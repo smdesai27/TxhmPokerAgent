@@ -258,6 +258,27 @@ minimize Leduc exploitability. **Full round-by-round log + the authoritative "Be
 is a solved 936-state game (CFR → ~0 in seconds; tuned NFSP → ~0.06). **The credibility is the METHOD,
 not the magnitude.** Report it as a methodology + honest-ablation result.
 
+### 5.2 — Rounds 8–10: tried to BEAT 0.56 (last-iterate convergence); honest negative
+The user asked to push for a lower / converged-iterate number. Brainstorm (a 4-agent research workflow →
+docs/leduc_improvement_ideas.md) ranked the options; we implemented the top picks. Outcome (full data
+docs/leduc_sweep_log.md R8–R10, artifacts docs/leduc_mmd_sweep/ + docs/leduc_r9/):
+- **MMD / NashPG** (PPO + KL-to-magnet, `--mmd_kl_coef/--mmd_refresh_every/--mmd_prox_coef/--mmd_magnet_tau`
+  in validate_leduc_exploitability.py): **damps the catastrophic divergence** (plain PPO iterate → 4.88;
+  MMD stays bounded ~1–2.5) but does **NOT** converge low. Across hard-refresh (R8), +explicit KL-to-π_old
+  proximal (R9), and smooth EMA / no-refresh magnets (R10), and α/τ/prox/epoch sweeps, the iterate finds
+  ~0.8–1.0 dips but **wanders 0.9–2.5** — no clean last-iterate convergence. Root cause (matches the
+  literature): clean MMD/R-NaD/NeuRD use **all-actions counterfactual values**; our SAMPLED GAE advantage
+  is too noisy. Adding all-actions values = Deep-CFR-scale work, **out of scope**.
+- **Faithful NFSP** (anticipatory `--anticipatory_eta` + reservoir hygiene, validate_leduc_nfsp.py): η=0.1
+  gives a CLEANER monotone π̄ descent than R7 but is **data-starved** on on-policy PPO (η feeds the BR ~10×
+  less/iter; PPO can't use accumulated replay like NFSP's DQN), reaching only 0.73 @8k. **R7's η=1, 0.56
+  stands as the NFSP result.**
+- **Tabular CFR+ anchor** (leduc_cfr_anchor.py): ~0.05 NashConv in seconds — the labeled reference 0-line.
+
+**Net:** the lower-number push is an honest NEGATIVE that STRENGTHENS the writeup — it shows exactly why the
+principled fixes hit diminishing returns on a from-scratch on-policy stack, and why poker AI uses all-actions
+CFR. Best reported neural result remains R7 NFSP π̄ **0.56**. **Recommendation: conclude; write up R1–R10.**
+
 **Verified headline (use ~verbatim):** "On Leduc poker — small enough that exact, ungameable
 exploitability (NashConv) is computable — a from-scratch PyTorch self-play stack reproduces the
 textbook failure-and-fix: the raw PPO iterate **cycles** (best 0.67, final diverges to ~1.3–2.6) and
