@@ -73,9 +73,13 @@ class Reservoir:
         )
 
 
-def play_episode_nfsp(game, br_net, avg_net, learner, obs_dim, num_actions, device, buffer, reservoir, rng):
-    """Best-responder (learner) plays vs the average policy pi_bar (avg_net). Records the
-    best-responder's (obs, legal, action) into both the PPO buffer and the reservoir."""
+def play_episode_nfsp(game, br_net, avg_net, learner, obs_dim, num_actions, device, buffer, reservoir,
+                      rng, br_mode=True):
+    """NFSP anticipatory dynamics. With prob eta the learner plays its best-responder (br_mode=True)
+    and we record its (obs, legal, action) into BOTH the PPO buffer and the SL reservoir; otherwise
+    (br_mode=False) the learner plays the average policy pi_bar and records NOTHING (reservoir
+    hygiene: pi_bar only ever imitates clean best-response actions, never its own averaged actions).
+    The opponent always plays pi_bar, so the best-responder best-responds to the average strategy."""
     state = game.new_initial_state()
     start = len(buffer)
     while not state.is_terminal():
@@ -86,7 +90,7 @@ def play_episode_nfsp(game, br_net, avg_net, learner, obs_dim, num_actions, devi
         cur = state.current_player()
         obs, mask = _obs_and_mask(state, cur, obs_dim, num_actions, device)
         with torch.no_grad():
-            if cur == learner:
+            if cur == learner and br_mode:
                 logits, value = br_net(obs.unsqueeze(0))
                 dist = Categorical(logits=masked_logits(logits, mask.unsqueeze(0)))
                 action = dist.sample()
@@ -137,6 +141,10 @@ def main():
     parser.add_argument("--sl_updates", type=int, default=4)
     parser.add_argument("--sl_batch", type=int, default=256)
     parser.add_argument("--reservoir", type=int, default=400000)
+    parser.add_argument("--anticipatory_eta", type=float, default=0.1,
+                        help="NFSP anticipatory eta: per-episode prob the learner plays its BR (and "
+                             "feeds the PPO buffer + reservoir) vs the average policy pi_bar. H&S use "
+                             "~0.1; the old NFSP-lite was effectively eta=1 (always BR), which plateaus.")
     parser.add_argument("--hidden", type=int, default=128)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--output_json", type=str, default=None)
@@ -172,6 +180,7 @@ def main():
 
     print(f"leduc_poker NFSP-lite | obs_dim={obs_dim} num_actions={num_actions} | "
           f"br_entropy={args.br_entropy} sl_lr={args.sl_lr} sl_updates={args.sl_updates} "
+          f"anticipatory_eta={args.anticipatory_eta} ppo_epochs={cfg.PPO_EPOCHS} "
           f"episodes/iter={args.episodes_per_iter} iters={args.iterations}")
 
     curve = []
@@ -185,9 +194,10 @@ def main():
         avg_net.train()
         buffer = RolloutBuffer()
         for ep in range(int(args.episodes_per_iter)):
+            br_mode = rng.rand() < float(args.anticipatory_eta)
             play_episode_nfsp(game, br_net, avg_net, learner=ep % 2,
                               obs_dim=obs_dim, num_actions=num_actions, device=device,
-                              buffer=buffer, reservoir=reservoir, rng=rng)
+                              buffer=buffer, reservoir=reservoir, rng=rng, br_mode=br_mode)
         if len(buffer) > 0:
             ppo_update(br_net, ppo_opt, buffer, cfg, device, entropy_coef=args.br_entropy)
         sl_update(avg_net, sl_opt, reservoir, args.sl_batch, args.sl_updates, device)
@@ -206,6 +216,7 @@ def main():
         "iterations": int(args.iterations), "episodes_per_iter": int(args.episodes_per_iter),
         "br_entropy": args.br_entropy, "sl_lr": args.sl_lr, "sl_updates": args.sl_updates,
         "sl_batch": args.sl_batch, "reservoir": args.reservoir, "seed": seed,
+        "anticipatory_eta": float(args.anticipatory_eta), "ppo_epochs": int(cfg.PPO_EPOCHS),
         "initial_nash_conv": init_nc, "final_nash_conv": final_nc, "best_nash_conv": best,
         "improvement_factor": (init_nc / best) if best > 0 else None,
         "curve": curve,
