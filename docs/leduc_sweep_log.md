@@ -271,6 +271,13 @@ is Deep-CFR-scale work, out of scope here. **Recommendation: write up the honest
 Writeup landmines from the R7 review (don't say "converges" for the iterate, report both seeds, units ≈2×,
 never attach a Leduc number to the HUNL agent) all still apply. See HANDOFF.md §5.1.
 
+**Why this doesn't contradict AlphaHoldem's "convergence":** AlphaHoldem converged a DIFFERENT quantity —
+training-loss + Elo + head-to-head win-rate (mbb/h vs Slumbot/DeepStack/humans), NOT exploitability (which it
+concedes is intractable on HUNL and never measures). Win-rate ≠ exploitability (Lisý&Bowling LBR: two bots
+tied head-to-head but ~1300 mbb/g apart in exploitability). We measured the exact, ungameable thing on Leduc;
+our cycling is the textbook signature of average-iterate-guaranteed self-play evaluated at the current iterate.
+Full verified framing + sources in **HANDOFF.md §5.3**.
+
 ## Prior ablation (context — not part of this sweep)
 Trinal-Clip ≡ vanilla on Leduc (clips never fire on-policy / at this scale); simplified Elo-kBSP
 underperformed rolling. See HANDOFF.md §5.

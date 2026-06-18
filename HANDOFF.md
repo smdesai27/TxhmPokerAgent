@@ -301,6 +301,34 @@ cycling, settling to a stable NashConv of **~0.54–0.59** across two seeds (ran
 `/oscar/scratch/smdesai/leduc_verify/`, then `bash` a runner that `srun`s the 4 variants (see
 `/tmp/leduc_ablation.sh` content, reproduced in §7). Each run is a few minutes on a CPU node.
 
+### 5.3 — "Why our cycling doesn't contradict AlphaHoldem's convergence" (WRITEUP SECTION — verified)
+A skeptical reader will ask: *AlphaHoldem says it converged — why does yours cycle?* The honest, verified
+answer (cross-checked against the AAAI'22 paper + the poker-AI literature) is that **they converged a
+different, more forgiving quantity than we measured.**
+- **AlphaHoldem never measures exploitability.** Its "convergence" = (1) the Trinal-Clip PPO **training-loss
+  curve flattening**, (2) **Elo** plateauing inside its self-play league (their model-selection metric), and
+  (3) **head-to-head win-rate** (mbb/h): +111.6 vs Slumbot, +16.9 vs a DeepStack reimpl, +10.3 vs humans.
+  It explicitly concedes best-response/exploitability on full HUNL (~10^161 info sets) is "computationally
+  prohibitive" (citing NFSP) and never computes NashConv.
+- **Win-rate ≠ exploitability** — the gap is huge. Lisý & Bowling (LBR): Act1 and Slumbot **tied head-to-head
+  (~20 mbb/g) yet differed ~1300 mbb/g in exploitability.** The Student of Games authors state it directly:
+  *standard self-play RL is NOT guaranteed to reduce exploitability with continued training.* So AlphaHoldem's
+  strong, "converged" agent is almost certainly **still exploitable** — they just can't (and don't) measure it.
+- **We ran the rigorous test they couldn't.** We measured EXACT exploitability on Leduc (936 states), the one
+  place it's computable. Our result — iterate cycles, the NFSP *average* converges (~0.56), regularization
+  (MMD) damps divergence but a sampled advantage won't pin it low — is *exactly* what theory predicts: only
+  **average-iterate** (CFR/NFSP), **last-iterate-regularized** (R-NaD/MMD, residual ε unless reg→0), or
+  **search** (ReBeL/Student of Games — which provably/soundly approach Nash and resist LBR) drive
+  exploitability down. Plain self-play — AlphaHoldem included — does not.
+- **What they did differently that helps THEIR metric (not ours):** Trinal-Clip PPO (bounds the high-variance
+  HUNL gradient → loss converges; we ablated it = inert at Leduc's ~14-chip scale), K-Best Self-Play (damps
+  Elo cycling vs the league; our simplified version underperformed rolling), pseudo-siamese CNN (8.6M vs our
+  ~1.5M), and **2.7B hands / 8 GPUs × 3 days** of scale. None of these target exploitability.
+- **The framing payoff:** this isn't "we failed to reproduce AlphaHoldem." It's *"we chose the one metric that
+  can't be gamed, on the one game where it's computable, and showed precisely where end-to-end self-play's
+  guarantees end — the gap CFR/search exist to close."* (Sources: AlphaHoldem AAAI'22; Lisý&Bowling LBR
+  arXiv:1612.07547; Student of Games, Science Adv. 2023; ReBeL arXiv:2007.13544.)
+
 ---
 
 ## 6. Phase 2 — the writeup (recommended next step; everything it needs is ready)
