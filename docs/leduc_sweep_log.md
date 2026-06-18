@@ -178,6 +178,25 @@ hyperparameters as the HUNL configs, so it exercises the real recipe.
 | R6 | NFSP-lite (strong BR, 5k it) | 0.78 | 6.1× | stable | first non-divergent estimate |
 | **R7** | **NFSP-lite (strong BR, 20k it)** | **0.538 / 0.588 (mean 0.56)** | **~8×** | **stable, non-divergent** | lowest + only non-cycling; still ~9× above tuned NFSP (0.06) |
 
+## Round 8 (RUNNING via sbatch) — MMD/NashPG: make the ITERATE converge (last-iterate)
+Re-opened the loop at the user's request to get a LOWER number, via the brainstorm's #1 pick
+(docs/leduc_improvement_ideas.md): Magnetic Mirror Descent / NashPG = "PPO + reverse-KL to a
+periodically-refreshed magnet rho" (Sokota et al. 2022; lineage MMD → R-NaD/DeepNash → NashPG).
+Implemented in `validate_leduc_exploitability.py` as `--mmd_kl_coef`(alpha) + `--mmd_refresh_every`(K)
+(commit a1c133d). The HEADLINE metric flips to the **CURRENT ITERATE** (MMD makes it converge — no
+averaging needed), unlike R1–R7 where only the average converged.
+
+Also added the honest anchor line: `leduc_cfr_anchor.py` (tabular CFR/CFR+, OpenSpiel) — smoke-tested,
+**CFR+ → 0.050 NashConv at 60 iters → ~0 with more** (the reference 0-line; NOT an RL method).
+
+**Smoke (alpha=0.1, K=10, 150 iters):** current-iterate NashConv descended MONOTONICALLY 5.05 → 1.55
+(no cycling, no NaN) — mechanism validated. **Sweep (jobs 3313390–97, seed 7, 4000 iters):** alpha ∈
+{0.05,0.1,0.2,0.3} × K ∈ {1,10,50,100,500}, plus a strong-BR variant (ppo_epochs 10, entropy 0.02).
+**Looking for:** the lowest STABLE current-iterate NashConv (final ≈ best). Target ~0.05–0.15 (would be
+~4–10× below R7's 0.56 average and, crucially, a CONVERGED ITERATE — the on-thesis result).
+**Units note (state in writeup):** OpenSpiel NashConv = sum of both players' BR gains ≈ 2× single-player
+exploitability; published NFSP ~0.06 single-player ≈ ~0.12 on this axis; CFR+ ~0.004–0.02. **Results: _pending_.**
+
 ## Prior ablation (context — not part of this sweep)
 Trinal-Clip ≡ vanilla on Leduc (clips never fire on-policy / at this scale); simplified Elo-kBSP
 underperformed rolling. See HANDOFF.md §5.
