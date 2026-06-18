@@ -225,8 +225,26 @@ plateaus. Added anticipatory η (learner plays BR w.p. η, feeding PPO+reservoir
 nothing = reservoir hygiene). Smoke: π̄ descends monotone. Sweep: η ∈ {0.1,0.2}, episodes 256–512,
 strong BR (ppo_epochs 10), reservoir 2M, 8k–14k iters.
 
-**Looking for:** MMD — a LOW, STABLE current iterate (final≈best, the on-thesis last-iterate win);
-NFSP — π̄ well below R7's 0.56. **Results: _pending_.**
+**RESULT (both negative at this budget, but instructive — artifacts docs/leduc_r9/):**
+- **MMD+prox = SAWTOOTH.** The proximal term smoothed the *short* horizon (the 200-iter smoke was monotone)
+  but over 10k iters the iterate descends to ~1.1 by 2–4k then **spikes back to 3–4 repeatedly** (sawtooth),
+  tracking the hard magnet refresh (every K=100: re-anchoring ρ to a drifting/noisy policy blows it up).
+  Best transient current 0.77 (α=0.1,p=0.3,e3) but final 3.1; all 6 UNSTABLE. Diagnosis: the HARD refresh
+  is the instability → R10 replaces it with a smooth EMA magnet.
+- **Faithful NFSP (η=0.1) = UNDERTRAINED, not broken.** π̄ descends **smoothly & monotonically** (4.83→1.12→
+  0.94→0.89→**0.73** at 8k) and is *still falling* — cleaner than R7's noisy curve, but worse number only
+  because η=0.1 feeds the BR ~10× less data/iter (on-policy PPO can't exploit accumulated replay like NFSP's
+  DQN). Best 0.729 (η=0.1, 8k) / 0.744 (η=0.2) / 0.935 (η=0.1, 14k ep256). So η=1 (R7, 0.56) actually suited
+  on-policy PPO better; **R7's 0.56 stands as the NFSP result.** The η<1 variant would need ~3× more iters.
+
+## Round 10 (RUNNING via sbatch) — MMD with a SMOOTH EMA magnet (fix the R9 sawtooth)
+Replace the destabilizing hard refresh with an EMA target ρ←(1−τ)ρ+τθ each iter (R-NaD-style slow target;
+`--mmd_magnet_tau`, commit pending). Smoke (τ=0.01): smooth monotone descent 5.05→1.27 over 300 iters, no
+crash. Sweep (jobs 3318771–76, seed 7, 10k iters): τ ∈ {0.005,0.01,0.02} × α ∈ {0.05,0.1,0.2}, + a
+no-refresh control (constant magnet). **This is the last cheap lever for the on-thesis last-iterate win;**
+if EMA still doesn't give a LOW STABLE iterate, the remaining fix is structural (all-actions advantage /
+Deep CFR) — out of scope for this off-track project → conclude and write up the honest investigation.
+**Results: _pending_.**
 
 ## Prior ablation (context — not part of this sweep)
 Trinal-Clip ≡ vanilla on Leduc (clips never fire on-policy / at this scale); simplified Elo-kBSP

@@ -1,0 +1,91 @@
+{
+  "game": "leduc_poker",
+  "method": "nfsp_lite (PPO best-responder + SL average policy)",
+  "obs_dim": 30,
+  "num_actions": 3,
+  "iterations": 8000,
+  "episodes_per_iter": 512,
+  "br_entropy": 0.1,
+  "sl_lr": 0.001,
+  "sl_updates": 20,
+  "sl_batch": 1024,
+  "reservoir": 2000000,
+  "seed": 7,
+  "anticipatory_eta": 0.1,
+  "ppo_epochs": 10,
+  "initial_nash_conv": 4.831650524685024,
+  "final_nash_conv": 0.7290394746554203,
+  "best_nash_conv": 0.7290394746554203,
+  "improvement_factor": 6.627419629051909,
+  "curve": [
+    {
+      "iteration": 0,
+      "pi_bar_nash_conv": 4.831650524685024
+    },
+    {
+      "iteration": 500,
+      "pi_bar_nash_conv": 1.3313786674651031
+    },
+    {
+      "iteration": 1000,
+      "pi_bar_nash_conv": 1.3295371520894754
+    },
+    {
+      "iteration": 1500,
+      "pi_bar_nash_conv": 1.415787926837968
+    },
+    {
+      "iteration": 2000,
+      "pi_bar_nash_conv": 1.358329229103274
+    },
+    {
+      "iteration": 2500,
+      "pi_bar_nash_conv": 1.2265532301919968
+    },
+    {
+      "iteration": 3000,
+      "pi_bar_nash_conv": 1.121396704289741
+    },
+    {
+      "iteration": 3500,
+      "pi_bar_nash_conv": 1.019849514309775
+    },
+    {
+      "iteration": 4000,
+      "pi_bar_nash_conv": 0.9354196529310863
+    },
+    {
+      "iteration": 4500,
+      "pi_bar_nash_conv": 0.9465672925885465
+    },
+    {
+      "iteration": 5000,
+      "pi_bar_nash_conv": 0.9193945147718712
+    },
+    {
+      "iteration": 5500,
+      "pi_bar_nash_conv": 0.9647609221180671
+    },
+    {
+      "iteration": 6000,
+      "pi_bar_nash_conv": 0.9051135662805776
+    },
+    {
+      "iteration": 6500,
+      "pi_bar_nash_conv": 0.8874533934334414
+    },
+    {
+      "iteration": 7000,
+      "pi_bar_nash_conv": 0.8860285226204931
+    },
+    {
+      "iteration": 7500,
+      "pi_bar_nash_conv": 0.8294640465462838
+    },
+    {
+      "iteration": 8000,
+      "pi_bar_nash_conv": 0.7290394746554203
+    }
+  ],
+  "note": "pi_bar = supervised average over the reservoir of best-responder actions; this is the convergent (low-exploitability) estimate, unlike the cycling current iterate."
+}
