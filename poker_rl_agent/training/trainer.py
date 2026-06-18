@@ -458,6 +458,22 @@ class Trainer:
         self._opponent_cache[entry.entry_id] = (entry.step, model)
         return model
 
+    def _sample_opponent_spec(self, mix):
+        """Sample one episode's opponent per the random/exploit/league mix. Returns
+        (opponent_entry, opponent_model, opponent_agent, kind). Single source of truth shared by the
+        serial worker and the vectorized collector (identical RNG draw + thresholds as the old loop)."""
+        sampled = random.random()
+        use_random = sampled < mix["random"]
+        use_exploit = (sampled >= mix["random"]) and (sampled < (mix["random"] + mix["exploit"]))
+        if use_random:
+            return None, None, RandomAgent(), "random"
+        if use_exploit:
+            return None, None, random.choice(self._exploit_agents), "exploit"
+        entry = self.league.sample_opponent()
+        # defensive: should never be None (initial snapshot), but fall back to self-play if so
+        model = self.model if entry is None else self._get_opponent_model(entry)
+        return entry, model, None, "league"
+
     def _collect_rollouts(self, progress: float = 1.0, policy_temperature: float = 1.0):
         self.rollout_buffer.clear()
         returns = []
@@ -468,9 +484,7 @@ class Trainer:
         max_episodes = max(target_episodes, min_transitions * 4)
         episodes_collected = 0
         mix = self._resolve_opponent_mix()
-        random_opponent_episodes = 0
-        exploit_opponent_episodes = 0
-        league_opponent_episodes = 0
+        counters = {"random": 0, "exploit": 0, "league": 0}
 
         #for metrics
         preflop_total = 0
@@ -492,43 +506,15 @@ class Trainer:
         allin_idx = bucket_idx["allin"]
 
         self.model.eval()
-        while episodes_collected < target_episodes or (
-            len(self.rollout_buffer) < min_transitions and episodes_collected < max_episodes
-        ):
-            sampled = random.random()
-            #distribtion is a true prob and agent probabs are mutally exculsive
-            use_random_opponent = sampled < mix["random"]
-            use_exploit_opponent = (sampled >= mix["random"]) and (
-                sampled < (mix["random"] + mix["exploit"])
-            )
-            opponent_entry = None
-            opponent_model = None
-            opponent_agent = None
-            if use_random_opponent:
-                opponent_agent = RandomAgent()
-                random_opponent_episodes += 1
-            elif use_exploit_opponent:
-                opponent_agent = random.choice(self._exploit_agents)
-                exploit_opponent_episodes += 1
-            else:
-                opponent_entry = self.league.sample_opponent()
-                #defensive check to make sure we always have an opponent model, should never be None due to initial snapshot but just in case
-                opponent_model = self.model if opponent_entry is None else self._get_opponent_model(opponent_entry)
-                league_opponent_episodes += 1
 
-            episode_transitions, final_return, _ = self.worker.generate_episode(
-                policy_model=self.model,
-                opponent_model=opponent_model,
-                opponent_agent=opponent_agent,
-                train_player=None,
-                bb_size=self.config.BB_SIZE,
-                curriculum=self.curriculum,
-                progress=progress,
-                policy_temperature=policy_temperature,
-            )
-
-            #record rollout transitions in dict
-            #for metrics
+        # Shared per-episode ingest: the serial worker and the vectorized collector feed episodes
+        # through IDENTICAL downstream accounting (buffer add + preflop diagnostics + Elo), so they
+        # are parity-by-construction. Only HOW episodes are produced differs (serial vs batched).
+        def _ingest(episode_transitions, final_return, opponent_entry):
+            nonlocal episodes_collected, preflop_total, preflop_fold, preflop_call_check
+            nonlocal preflop_half_pot, preflop_pot_raise, preflop_allin
+            nonlocal preflop_legal_pot_raise, preflop_legal_half_pot
+            nonlocal preflop_choose_pot_raise_when_legal, preflop_choose_half_pot_when_legal
             for transition in episode_transitions:
                 self.rollout_buffer.add(
                     state=transition["state"],
@@ -575,9 +561,7 @@ class Trainer:
                         preflop_legal_half_pot += 1
                         if action == half_pot_idx:
                             preflop_choose_half_pot_when_legal += 1
-
             returns.append(final_return)
-
             # elo updates for league opponents based on eps result
             if opponent_entry is not None:
                 if final_return > 0:
@@ -587,8 +571,58 @@ class Trainer:
                 else:
                     result = 0.5
                 self.league.update_elo(opponent_entry.entry_id, result)
-
             episodes_collected += 1
+
+        if bool(getattr(self.config, "USE_VECTORIZED_COLLECTOR", False)):
+            if getattr(self, "_vec_collector", None) is None:
+                from ..algorithms.vectorized_self_play import VectorizedSelfPlayCollector
+                self._vec_collector = VectorizedSelfPlayCollector(
+                    self.worker.env,
+                    device=self.device,
+                    num_games=int(getattr(self.config, "ROLLOUT_BATCH_GAMES", 256)),
+                    max_action_history=self.config.MAX_ACTION_HISTORY,
+                    curriculum=self.curriculum,
+                )
+
+            def _spec():
+                entry, model, agent, kind = self._sample_opponent_spec(mix)
+                counters[kind] += 1
+                return entry, model, agent
+
+            def _drain(n):
+                for trans, fret, _tp, entry in self._vec_collector.collect(
+                    self.model, _spec, n,
+                    bb_size=self.config.BB_SIZE,
+                    progress=progress,
+                    policy_temperature=policy_temperature,
+                ):
+                    _ingest(trans, fret, entry)
+
+            _drain(target_episodes)
+            # safety: top up to the transition floor (rare) with small extra batches
+            while len(self.rollout_buffer) < min_transitions and episodes_collected < max_episodes:
+                _drain(max(1, target_episodes // 4))
+        else:
+            while episodes_collected < target_episodes or (
+                len(self.rollout_buffer) < min_transitions and episodes_collected < max_episodes
+            ):
+                entry, model, agent, kind = self._sample_opponent_spec(mix)
+                counters[kind] += 1
+                episode_transitions, final_return, _ = self.worker.generate_episode(
+                    policy_model=self.model,
+                    opponent_model=model,
+                    opponent_agent=agent,
+                    train_player=None,
+                    bb_size=self.config.BB_SIZE,
+                    curriculum=self.curriculum,
+                    progress=progress,
+                    policy_temperature=policy_temperature,
+                )
+                _ingest(episode_transitions, final_return, entry)
+
+        random_opponent_episodes = counters["random"]
+        exploit_opponent_episodes = counters["exploit"]
+        league_opponent_episodes = counters["league"]
 
         mean_return = float(np.mean(returns)) if returns else 0.0
         if preflop_total > 0:
