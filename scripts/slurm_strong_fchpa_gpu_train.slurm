@@ -5,13 +5,14 @@
 #SBATCH --time=48:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=12
 #SBATCH --mem=64G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 
 # S7: GPU-scaled "strong head-to-head" FCHPA run (vectorized collector + corrected PFSP + Trinal-Clip).
-# 16 CPUs because vectorized self-play is CPU-encode bound even after batching the GPU forward pass.
+# CPUs capped at 12 = the norm-gpu per-user QOS limit (cpu=12, gres/gpu=2, mem=192G); vectorized
+# self-play is CPU-encode bound so we take the max allowed. GPU=1, mem=64G are within QOS.
 # WANDB offline (no API key needed). Override CONFIG_NAME for the canary:
 #   CONFIG_NAME=strong_fchpa_gpu_canary sbatch scripts/slurm_strong_fchpa_gpu_train.slurm
 set -euo pipefail
