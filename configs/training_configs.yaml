@@ -1966,7 +1966,8 @@ strong_fchpa_gpu_canary:
   ROLLOUT_BATCH_GAMES: 512
   ROLLOUT_EPISODES: 1024
   MIN_ROLLOUT_TRANSITIONS: 1024
-  CFR_ITERATIONS: 30
+  CFR_ITERATIONS: 21030   # ABSOLUTE target step (loop is range(start_step, CFR_ITERATIONS)); champion
+                          # resumes at step 21000, so this runs 30 real iterations.
   LR: 0.000075
   PPO_TARGET_KL: 0.01
   PPO_EPOCHS: 4
@@ -2004,7 +2005,8 @@ strong_fchpa_gpu:
   ROLLOUT_BATCH_GAMES: 512
   ROLLOUT_EPISODES: 1024
   MIN_ROLLOUT_TRANSITIONS: 2048
-  CFR_ITERATIONS: 40000
+  CFR_ITERATIONS: 61000   # ABSOLUTE target step; champion resumes at 21000 -> ~40000 real iterations.
+                          # Resize from the canary's measured iters/min to fit the 48h walltime.
   LR: 0.000075
   PPO_TARGET_KL: 0.01
   PPO_EPOCHS: 4
