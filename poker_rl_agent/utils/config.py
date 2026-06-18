@@ -61,6 +61,14 @@ class Config:
     PPO_ENTROPY_COEF: float = 0.01
     PPO_TARGET_KL: float = 0.03
     PPO_ADV_CLIP: float = 5.0  # <=0 disables clipping
+    # S4 Trinal-Clip (AlphaHoldem): dual-clip (delta1) lower-bounds the policy term at delta1*A for
+    # negative-advantage samples (bounds exploding off-policy ratios); value-target clip bounds the
+    # value regression target. Both OFF by default -> bit-identical vanilla PPO. PPO_VALUE_CLIP is in
+    # VALUE_TARGET_SCALE-divided (scaled) units (returns ~ +/-stack/bb/scale); likely inert at our
+    # stakes (HUNL-scale variance control), included for fidelity/ablation.
+    PPO_DUAL_CLIP: bool = False
+    PPO_DUAL_CLIP_DELTA1: float = 3.0
+    PPO_VALUE_CLIP: float = 0.0  # 0 disables
     PPO_ADAPTIVE_KL_ENABLE: bool = False
     PPO_ADAPTIVE_KL_HIGH: float = 2.0  # high threshold = this * PPO_TARGET_KL
     PPO_ADAPTIVE_KL_LOW: float = 0.5  # low threshold = this * PPO_TARGET_KL

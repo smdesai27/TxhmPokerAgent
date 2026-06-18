@@ -730,6 +730,10 @@ class Trainer:
         value_scale = max(float(getattr(self.config, "VALUE_TARGET_SCALE", 1.0)), 1e-6)
         value_loss_type = str(getattr(self.config, "VALUE_LOSS_TYPE", "huber")).lower()
         huber_delta = max(float(getattr(self.config, "VALUE_HUBER_DELTA", 1.0)) / value_scale, 1e-6)
+        # S4 Trinal-Clip (off by default -> vanilla PPO). value clip is in scaled-return units.
+        trinal_dual_clip = bool(getattr(self.config, "PPO_DUAL_CLIP", False))
+        trinal_delta1 = float(getattr(self.config, "PPO_DUAL_CLIP_DELTA1", 3.0))
+        trinal_value_clip = float(getattr(self.config, "PPO_VALUE_CLIP", 0.0))
         entropy_coef_effective = float(
             self.config.PPO_ENTROPY_COEF if entropy_coef is None else entropy_coef
         )
@@ -801,17 +805,30 @@ class Trainer:
                         1.0 - self.config.PPO_CLIP_EPS,
                         1.0 + self.config.PPO_CLIP_EPS,
                     ) * adv
-                    #batch to scalar with mean and then clip(based on percentage of batch)
-                    policy_loss = -torch.min(surr1, surr2).mean()
+                    #batch to scalar with mean; optional Trinal-Clip dual-clip on neg-advantage samples
+                    std_term = torch.min(surr1, surr2)
+                    if trinal_dual_clip:
+                        # lower-bound the policy term at delta1*A when A<0 so an exploding ratio can't
+                        # blow up a negative-advantage sample (AlphaHoldem clip #2).
+                        dual = torch.max(std_term, trinal_delta1 * adv)
+                        obj_term = torch.where(adv < 0, dual, std_term)
+                    else:
+                        obj_term = std_term
+                    policy_loss = -obj_term.mean()
                     clipfrac = ((ratio - 1.0).abs() > self.config.PPO_CLIP_EPS).float().mean()
 
                     # normalize value preds and targets to stabalize grads bc we scale reutrns
                     value_pred = outputs["state_value"] / value_scale
-                    #dont use mse 
+                    # Trinal-Clip value-target clip (AlphaHoldem clip #3): bound the regression target
+                    # only (leave scaled_returns intact for the explained-var metric). Off by default.
+                    value_target = scaled_returns
+                    if trinal_value_clip > 0.0:
+                        value_target = torch.clamp(scaled_returns, -trinal_value_clip, trinal_value_clip)
+                    #dont use mse
                     if value_loss_type == "mse":
-                        value_loss = F.mse_loss(value_pred, scaled_returns)
+                        value_loss = F.mse_loss(value_pred, value_target)
                     else:
-                        value_loss = F.huber_loss(value_pred, scaled_returns, delta=huber_delta)
+                        value_loss = F.huber_loss(value_pred, value_target, delta=huber_delta)
 
                     style_kl, style_hinge, style_preflop_fraction = self._compute_style_regularizer(
                         probs=dist.probs,
