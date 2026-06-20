@@ -2,13 +2,15 @@
   "use strict";
 
   const API_BASE = window.POKER_API_BASE || "";
+  const GITHUB_URL = window.POKER_GITHUB_URL || "";
+  const WRITEUP_URL = window.POKER_WRITEUP_URL || GITHUB_URL;
 
   let sessionId = null;
   let autoContinueTimer = null;
+  let busy = false;
 
   const $ = (sel) => document.querySelector(sel);
 
-  // DOM refs
   const btnNewSession = $("#btn-new-session");
   const btnNewHand = $("#btn-new-hand");
   const chkAutoContinue = $("#chk-auto-continue");
@@ -21,8 +23,15 @@
   const resultNext = $("#result-next");
   const historyLog = $("#history-log");
   const toast = $("#toast");
+  const turnIndicator = $("#turn-indicator");
+  const statusDot = $("#status-dot");
+  const badgeText = $("#agent-badge-text");
 
-  // API helpers
+  // ---- wire portfolio links ----
+  if (GITHUB_URL) $("#link-github").href = GITHUB_URL;
+  if (WRITEUP_URL) $("#link-writeup").href = WRITEUP_URL;
+
+  // ---- API ----
   async function api(method, path, body) {
     const opts = { method, headers: { "Content-Type": "application/json" } };
     if (body !== undefined) opts.body = JSON.stringify(body);
@@ -30,23 +39,15 @@
     try {
       res = await fetch(API_BASE + path, opts);
     } catch {
-      if (!API_BASE) {
-        throw new Error(
-          "Backend not connected. Set POKER_API_BASE in public/config.js to your API URL."
-        );
-      }
       throw new Error(
-        "Cannot reach backend at " + API_BASE + ". Is the server running?"
+        API_BASE
+          ? "Can't reach the agent backend. Free-tier servers sleep when idle — give it ~30s and retry."
+          : "Backend not connected. Set POKER_API_BASE in public/config.js."
       );
     }
     if (!res.ok) {
       let msg;
-      try {
-        const err = await res.json();
-        msg = err.detail || res.statusText;
-      } catch {
-        msg = res.statusText;
-      }
+      try { msg = (await res.json()).detail || res.statusText; } catch { msg = res.statusText; }
       throw new Error(msg);
     }
     return res.json();
@@ -55,26 +56,42 @@
   function showToast(msg) {
     toast.textContent = msg;
     toast.classList.add("visible");
-    setTimeout(() => toast.classList.remove("visible"), 3000);
+    setTimeout(() => toast.classList.remove("visible"), 4000);
   }
 
-  // Card rendering
+  // ---- agent status badge (handles Render free-tier cold start) ----
+  async function refreshHealth(attempt) {
+    try {
+      const h = await api("GET", "/api/v1/health");
+      const live = h.status === "ok" && h.model_loaded;
+      statusDot.className = "status-dot " + (live ? "online" : "offline");
+      const mode = (h.game_mode || "").toUpperCase();
+      badgeText.innerHTML = live
+        ? `<strong>Agent online</strong>${mode ? " · " + mode : ""}`
+        : "agent loading…";
+      const badge = $("#agent-badge");
+      if (h.checkpoint_label) badge.title = h.checkpoint_label;
+    } catch {
+      statusDot.className = "status-dot offline";
+      badgeText.textContent = attempt ? "agent asleep — click New session to wake it" : "waking agent… (free tier)";
+      if (!attempt) setTimeout(() => refreshHealth(1), 3500);
+    }
+  }
+
+  // ---- card rendering (corner pips + center suit) ----
+  const RED_SUITS = new Set(["♥", "♦"]); // ♥ ♦
   function renderCard(cardInfo, hidden) {
     const el = document.createElement("span");
-    el.classList.add("card");
-    if (hidden || !cardInfo) {
-      el.classList.add("face-down");
-      el.textContent = "?";
-      return el;
-    }
-    el.classList.add("face-up");
-    const suit = cardInfo.display.slice(-1);
-    if (suit === "\u2665" || suit === "\u2666") {
-      el.classList.add("red");
-    } else {
-      el.classList.add("black");
-    }
-    el.textContent = cardInfo.display;
+    el.className = "card";
+    if (hidden || !cardInfo) { el.classList.add("face-down"); return el; }
+    const disp = cardInfo.display || "";
+    const suit = disp.slice(-1);
+    const rank = disp.slice(0, -1) || disp;
+    el.classList.add("face-up", RED_SUITS.has(suit) ? "red" : "black");
+    el.innerHTML =
+      `<span class="card-corner tl">${rank}<span class="suit">${suit}</span></span>` +
+      `<span class="card-suit-center">${suit}</span>` +
+      `<span class="card-corner br">${rank}<span class="suit">${suit}</span></span>`;
     return el;
   }
 
@@ -87,31 +104,21 @@
     for (const c of cards) container.appendChild(renderCard(c, false));
   }
 
-  // Strip OpenSpiel prefix ("player=X move=...") and produce clean button label
   function cleanActionName(raw) {
     let name = raw;
-    // Strip "player=N move=" prefix if present
     const moveIdx = name.indexOf("move=");
-    if (moveIdx !== -1) {
-      name = name.slice(moveIdx + 5);
-    }
-    // Normalize specific patterns
+    if (moveIdx !== -1) name = name.slice(moveIdx + 5);
     const lower = name.toLowerCase().trim();
     if (lower === "fold") return "Fold";
     if (lower === "check") return "Check";
     if (lower === "call") return "Call";
     if (lower === "allin" || lower === "all-in" || lower === "all in") return "All In";
-    // "RaiseTo 200" -> "Raise 200"
     const raiseMatch = name.match(/^RaiseTo\s+(\d+)/i);
-    if (raiseMatch) return "Raise " + raiseMatch[1];
-    // Fallback: simple names like "raise half pot"
-    if (lower.startsWith("raise") || lower.startsWith("bet")) {
-      return name.charAt(0).toUpperCase() + name.slice(1);
-    }
+    if (raiseMatch) return "Raise to " + raiseMatch[1];
+    if (lower.startsWith("raise") || lower.startsWith("bet")) return name.charAt(0).toUpperCase() + name.slice(1);
     return name;
   }
 
-  // Action button classification
   function classifyAction(name) {
     const n = name.toLowerCase();
     if (n.includes("fold")) return "fold";
@@ -122,61 +129,65 @@
     return "default";
   }
 
-  // Main render
+  function setTurn(text, thinking) {
+    if (!text) { turnIndicator.classList.add("hidden"); return; }
+    turnIndicator.textContent = text;
+    turnIndicator.className = "turn-indicator" + (thinking ? " thinking" : "");
+  }
+
+  function setBusy(state) {
+    busy = state;
+    btnNewSession.disabled = state;
+    btnNewHand.disabled = state || !sessionId;
+    for (const b of actionsBar.querySelectorAll("button")) b.disabled = state;
+    if (state) setTurn("Agent is thinking…", true);
+  }
+
+  // ---- main render ----
   function renderState(state, stats) {
     placeholder.style.display = "none";
 
-    // Bot cards
     const botCards = $("#bot-cards");
-    if (state.is_terminal && state.bot_cards.length > 0) {
-      renderCards(botCards, state.bot_cards, false);
-    } else {
-      renderCards(botCards, [], true, 2);
-    }
+    if (state.is_terminal && state.bot_cards.length > 0) renderCards(botCards, state.bot_cards, false);
+    else renderCards(botCards, [], true, 2);
     $("#bot-stack").textContent = state.bot_stack.toFixed(0);
 
-    // Board
     renderCards($("#board-cards"), state.board_cards, false);
-    $("#pot-label").textContent = "Pot: " + state.pot_size.toFixed(0);
+    $("#pot-label").textContent = "Pot " + state.pot_size.toFixed(0);
     $("#street-label").textContent = state.street;
 
-    // Hero cards
     renderCards($("#hero-cards"), state.hero_cards, false);
     $("#hero-stack").textContent = state.human_stack.toFixed(0);
 
-    // Actions
     actionsBar.innerHTML = "";
-    if (!state.is_terminal && state.current_player === "human") {
+    const yourMove = !state.is_terminal && state.current_player === "human";
+    if (yourMove) {
       for (const la of state.legal_actions) {
         const btn = document.createElement("button");
-        btn.classList.add("action-btn", classifyAction(la.name));
+        btn.className = "action-btn " + classifyAction(la.name);
         btn.textContent = cleanActionName(la.name);
         btn.addEventListener("click", () => doAction(la.action_id));
         actionsBar.appendChild(btn);
       }
+      setTurn("Your move", false);
+    } else if (!state.is_terminal) {
+      setTurn("Agent is thinking…", true);
+    } else {
+      setTurn("", false);
     }
 
     btnNewHand.disabled = !state.is_terminal;
 
-    // Result overlay / auto-continue
-    if (autoContinueTimer) {
-      clearTimeout(autoContinueTimer);
-      autoContinueTimer = null;
-    }
+    if (autoContinueTimer) { clearTimeout(autoContinueTimer); autoContinueTimer = null; }
     if (state.is_terminal && state.hand_result) {
+      const hr = state.hand_result;
       if (chkAutoContinue.checked && sessionId) {
-        // Skip overlay, auto-deal next hand after brief pause
         resultOverlay.classList.add("hidden");
-        autoContinueTimer = setTimeout(() => {
-          autoContinueTimer = null;
-          doNewHand();
-        }, 600);
+        autoContinueTimer = setTimeout(() => { autoContinueTimer = null; doNewHand(); }, 700);
       } else {
-        const hr = state.hand_result;
         resultChips.textContent = (hr.human_chips >= 0 ? "+" : "") + hr.human_chips.toFixed(0) + " chips";
         resultChips.className = "chips " + (hr.human_chips >= 0 ? "positive" : "negative");
-        resultDetails.textContent =
-          "(" + (hr.human_bb >= 0 ? "+" : "") + hr.human_bb.toFixed(2) + " bb)";
+        resultDetails.textContent = "(" + (hr.human_bb >= 0 ? "+" : "") + hr.human_bb.toFixed(2) + " bb)";
         resultOverlay.classList.remove("hidden");
       }
     } else {
@@ -198,62 +209,79 @@
   function appendHistory(events, isTerminal, handResult) {
     for (const ev of events) {
       const div = document.createElement("div");
-      div.classList.add("event", ev.actor);
+      div.className = "event " + ev.actor;
       div.textContent = `[${ev.actor}] ${ev.action_name}`;
       historyLog.appendChild(div);
     }
     if (isTerminal && handResult) {
       const div = document.createElement("div");
-      div.classList.add("event", "system");
+      div.className = "event system";
       div.textContent = `Result: ${handResult.human_chips >= 0 ? "+" : ""}${handResult.human_chips.toFixed(0)} chips`;
       historyLog.appendChild(div);
     }
     historyLog.scrollTop = historyLog.scrollHeight;
   }
 
-  // Actions
+  function sysLine(text) {
+    const div = document.createElement("div");
+    div.className = "event system";
+    div.textContent = text;
+    historyLog.appendChild(div);
+  }
+
+  // ---- actions ----
   async function doNewSession() {
+    if (busy) return;
+    setBusy(true);
     try {
       const seat = parseInt(seatSelect.value, 10);
       const data = await api("POST", "/api/v1/session", { human_seat: seat });
       sessionId = data.game_state.session_id;
       historyLog.innerHTML = "";
-      const sysDiv = document.createElement("div");
-      sysDiv.classList.add("event", "system");
-      sysDiv.textContent = `--- New Session (seat P${seat}) ---`;
-      historyLog.appendChild(sysDiv);
+      sysLine(`--- New session (you are P${seat}) ---`);
+      statusDot.className = "status-dot online";
+      badgeText.innerHTML = "<strong>Agent online</strong>";
       renderState(data.game_state, data.stats);
     } catch (e) {
-      showToast("Error: " + e.message);
+      showToast(e.message);
+      setTurn("", false);
+    } finally {
+      setBusy(false);
     }
   }
 
   async function doAction(actionId) {
+    if (busy) return;
+    setBusy(true);
     try {
       const data = await api("POST", `/api/v1/session/${sessionId}/action`, { action_id: actionId });
       renderState(data.game_state, data.stats);
     } catch (e) {
-      showToast("Error: " + e.message);
+      showToast(e.message);
+      setTurn("Your move", false);
+    } finally {
+      setBusy(false);
     }
   }
 
   async function doNewHand() {
-    if (!sessionId) return;
+    if (!sessionId || busy) return;
+    setBusy(true);
     try {
       resultOverlay.classList.add("hidden");
       const data = await api("POST", `/api/v1/session/${sessionId}/new_hand`);
-      const sysDiv = document.createElement("div");
-      sysDiv.classList.add("event", "system");
-      sysDiv.textContent = `--- Hand #${data.game_state.hand_number} ---`;
-      historyLog.appendChild(sysDiv);
+      sysLine(`--- Hand #${data.game_state.hand_number} ---`);
       renderState(data.game_state, data.stats);
     } catch (e) {
-      showToast("Error: " + e.message);
+      showToast(e.message);
+    } finally {
+      setBusy(false);
     }
   }
 
-  // Events
   btnNewSession.addEventListener("click", doNewSession);
   btnNewHand.addEventListener("click", doNewHand);
   resultNext.addEventListener("click", doNewHand);
+
+  refreshHealth(0);
 })();
