@@ -8,6 +8,22 @@ league throughout). **Stage 0 ladder verdict (job 3356563, logs/ladder/new_vs_ch
 - Confirmed REAL (not a load bug): `load_checkpoint` uses strict `load_state_dict` and did not raise, so
   the trained weights loaded correctly. The new model genuinely regressed.
 
+**Behavior probe (job 3357321, logs/ladder/behavior_probe.json) — diagnosis = OVER-AGGRESSION DRIFT, not collapse:**
+| matchup | NEW (90k) | CHAMPION (21k) |
+|---|---|---|
+| vs random | **+1029 bb/100** | +948 |
+| vs always-call (calling station) | **−612 bb/100** | +539 |
+The new model is NOT collapsed (it crushes random even harder than the champion) — it drifted into a
+bluff-happy "maniac" that beats random/folding opponents but is trivially exploited by anything that just
+calls down (always-call −612; the balanced champion −511). ROOT CAUSE (in the run config): the opponent mix
+was 90% co-evolving league snapshots + 10% random with `EXPLOIT_OPPONENT_PROB=0.0` / `RANDOM_OPPONENT_PROB=0.0`
+— NO calling opponents ever punished over-aggression, and the league co-evolved to fold to it (feedback loop).
+
+**Concrete fix for a retry:** (1) turn ON exploit opponents (`EXPLOIT_OPPONENT_PROB`>0, always_call/sticky_call)
+so over-aggression is punished during training; (2) ANCHOR the champion permanently in the league as a fixed
+balanced opponent; (3) evaluate-vs-champion periodically + keep-best (never promote a regression); (4) lower
+entropy / shorter run to limit drift.
+
 **Mechanism (writeup gold):** classic self-play DRIFT / catastrophic forgetting of a strong warm-start. The
 training metric (rollout_mean_bb vs the *co-evolving* league) stayed POSITIVE the whole run — it kept
 "winning" locally — while the absolute strategy wandered away from the champion's certified strategy. The
