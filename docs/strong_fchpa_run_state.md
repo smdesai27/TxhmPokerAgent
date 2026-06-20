@@ -1,5 +1,28 @@
 # "Strong head-to-head" FCHPA GPU run — live state
 
+## ⬛ RESULT (2026-06-20): the scaled run REGRESSED the champion — honest negative
+Run 3330857 completed all 90k iters cleanly (1d14h47m, finite losses, rollout_mean_bb +3..+12 vs its
+league throughout). **Stage 0 ladder verdict (job 3356563, logs/ladder/new_vs_champ.json):**
+- Oracle new-vs-new: +14.6 bb/100, CI95 [−11, +40] → straddles 0 (eval sound).
+- **NEW (90k) vs CHAMPION (21k): −511.1 bb/100, CI95 [−582, −440] → the new model LOSES decisively.**
+- Confirmed REAL (not a load bug): `load_checkpoint` uses strict `load_state_dict` and did not raise, so
+  the trained weights loaded correctly. The new model genuinely regressed.
+
+**Mechanism (writeup gold):** classic self-play DRIFT / catastrophic forgetting of a strong warm-start. The
+training metric (rollout_mean_bb vs the *co-evolving* league) stayed POSITIVE the whole run — it kept
+"winning" locally — while the absolute strategy wandered away from the champion's certified strategy. The
+rigorous Stage 0 ladder (fixed strong reference) caught the −511 regression the training metric masked. Same
+lesson as AlphaHoldem (league win-rate ≠ strength) and the Leduc cycling finding: **measure vs a fixed strong
+reference, not a co-evolving league.** The eval discipline did its job.
+
+**Champion `interview_ready_1.pt` (21k) remains the strongest model.** To actually get stronger, the fix is to
+ANCHOR the champion: keep it permanently in the league as a fixed opponent + evaluate-vs-champion every N
+iters and keep-best + lower LR + little/no entropy injection + shorter run. (Optional retry; off-track.)
+
+---
+
+# "Strong head-to-head" FCHPA GPU run — original plan / state
+
 > The S7 multi-day run is LAUNCHED. This doc is the single source of truth for its state + what to do
 > when it finishes (the run is ~30h; context may compact). Companion: docs/strong_hunl_roadmap.md.
 
