@@ -123,9 +123,8 @@ def fig_metric_mirage():
     ax.set_yticklabels([r[0] for r in rows], fontsize=12)
     ax.set_xlim(-640, 230)
     ax.set_xlabel("bb / 100 hands  (heads-up win-rate)")
-    set_title(ax, "The training metric stayed positive the entire run.\n"
-                 "A fixed reference said the model had regressed −511 bb/100.",
-                 fontsize=15, weight="bold", loc="left", pad=14)
+    set_title(ax, "Training reward (vs the co-evolving league) vs the fixed-reference ladder",
+                 fontsize=14, weight="bold", loc="left", pad=12)
     save(fig, "02_metric_mirage")
 
 
@@ -158,9 +157,8 @@ def fig_behavior_gates():
     ax.set_ylim(0, 72)
     ax.legend(frameon=True, facecolor="white", edgecolor="none", framealpha=1,
               fontsize=11, loc="upper right")
-    set_title(ax, "A later, longer run scored well on win-rate — but had collapsed\n"
-                 "to fold-heavy play. The entropy + fold gates refused to promote it.",
-                 fontsize=14.5, weight="bold", loc="left", pad=14)
+    set_title(ax, "Action frequencies: champion (21k) vs the gate-failing 49k run",
+                 fontsize=14, weight="bold", loc="left", pad=12)
     save(fig, "03_behavior_gates")
 
 
@@ -208,9 +206,8 @@ def fig_leduc_curves():
     ax.xaxis.set_major_formatter(FuncFormatter(lambda v, p: f"{int(v/1000)}k" if v else "0"))
     ax.legend(frameon=True, facecolor="white", edgecolor="none", framealpha=1,
               fontsize=11, loc="upper right")
-    set_title(ax, "Leduc poker (936 states, exploitability is exact): the raw iterate\n"
-                 "cycles; only strategy-averaging is non-divergent — plateau ≈ 0.56.",
-                 fontsize=14.5, weight="bold", loc="left", pad=14)
+    set_title(ax, "Leduc NashConv: PPO iterate cycles; NFSP-lite strategy-averaging plateaus ≈ 0.56",
+                 fontsize=13.5, weight="bold", loc="left", pad=12)
     save(fig, "04_leduc_convergence")
 
 
@@ -245,9 +242,8 @@ def fig_calibration():
     for s in ("left", "top", "right", "bottom"):
         ax.spines[s].set_visible(False)
     ax.set_xlabel("NashConv  (log scale)  —  lower is closer to optimal", labelpad=8)
-    set_title(ax, "Calibrated honestly: ≈8× below random, but ≈9× above tuned NFSP —\n"
-                 "the contribution is the method, not the magnitude.",
-                 fontsize=14, weight="bold", loc="left", pad=12)
+    set_title(ax, "Leduc NashConv vs references (log scale)",
+                 fontsize=14, weight="bold", loc="left", pad=10)
     save(fig, "05_calibration_ladder")
 
 
@@ -290,9 +286,8 @@ def fig_over_aggression():
     ax.set_ylabel("bb / 100 hands")
     ax.set_ylim(-720, 1230)
     ax.legend(frameon=False, fontsize=11, loc="upper right")
-    set_title(ax, "Diagnosis — over-aggression drift, not collapse: it beats random even\n"
-                 "harder than the champion, but a calling station trivially punishes it.",
-                 fontsize=14.5, weight="bold", loc="left", pad=14)
+    set_title(ax, "Scaled model vs champion, by opponent (bb/100)",
+                 fontsize=14, weight="bold", loc="left", pad=12)
     save(fig, "06_over_aggression")
 
 

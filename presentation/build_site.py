@@ -30,24 +30,18 @@ OUT = os.path.join(DOCS, "index.html")
 
 # figure -> (heading substring to anchor after, svg filename, caption)
 FIGS = [
-    ("The agent, briefly", "01_architecture.svg",
-     "Pseudo-siamese two-tower actor–critic (≈1.5M params): a card tower and an LSTM action "
-     "tower fuse with 11 scalar features into a shared trunk, then split into policy and value heads."),
-    ("Knowing whether it was any good", "03_behavior_gates.svg",
-     "The behavior gates in action: a later, longer run scored well on win-rate but had collapsed "
-     "to fold-heavy, low-entropy play. The entropy and fold gates flagged it and refused promotion."),
+    ("Architecture", "01_architecture.svg",
+     "Pseudo-siamese two-tower actor–critic, ~1.5M parameters."),
+    ("Evaluation", "03_behavior_gates.svg",
+     "Champion (21k) vs the gate-failing 49k run; the entropy and fold gates blocked promotion."),
     ("The investigation", "04_leduc_convergence.svg",
-     "Leduc poker (936 states), where exploitability is exact: the raw PPO self-play iterate cycles, "
-     "while NFSP-style strategy-averaging is the only non-divergent estimator — plateauing near 0.56."),
-    ("What this is, and is not", "05_calibration_ladder.svg",
-     "Calibrated against references: ≈8× below uniform-random, but still ≈9× above tuned NFSP. "
-     "The 0.56 plateau is reported as methodology, not as a headline magnitude."),
-    ("What the fixed-reference ladder showed", "02_metric_mirage.svg",
-     "The metric mirage: the training signal (return vs the co-evolving league) stayed positive the "
-     "entire 90k-iteration run, while a fixed-reference ladder showed the model had regressed −511 bb/100."),
-    ("Diagnosing it", "06_over_aggression.svg",
-     "The diagnosis — over-aggression drift, not collapse: the scaled model beats a random opponent "
-     "even harder than the champion, but a calling station trivially punishes its bluff-happy style."),
+     "Leduc NashConv: the PPO iterate cycles; NFSP-lite strategy-averaging plateaus near 0.56."),
+    ("Calibration", "05_calibration_ladder.svg",
+     "Leduc NashConv against references, log scale."),
+    ("Scaled run", "02_metric_mirage.svg",
+     "Training reward stayed positive; the fixed-reference ladder shows −511 bb/100."),
+    ("Diagnosis", "06_over_aggression.svg",
+     "Scaled model vs champion across opponents."),
 ]
 
 # --------------------------------------------------------------------------- #
@@ -85,7 +79,7 @@ def inject(htmlbody):
                 cap_e = htmllib.escape(cap)
                 return (full + f'\n<figure class="fig">'
                         f'<img src="figures/{fn}" alt="{cap_e}" loading="lazy">'
-                        f'<figcaption>{cap_e}</figcaption></figure>')
+                        f'</figure>')
         return full
     return re.sub(r"(<h[23][^>]*>)(.*?)(</h[23]>)", repl, htmlbody, flags=re.S)
 
@@ -127,8 +121,8 @@ a:hover{{text-decoration:underline}}
   padding:84px 24px 72px;text-align:center}}
 .hero .kicker{{text-transform:uppercase;letter-spacing:.16em;font-size:13px;font-weight:600;
   color:#9db8e6;margin:0 0 18px}}
-.hero h1{{font-family:"Source Serif 4",Georgia,serif;font-weight:600;font-size:clamp(30px,5vw,50px);
-  line-height:1.12;margin:0 auto 20px;max-width:14ch}}
+.hero h1{{font-family:"Source Serif 4",Georgia,serif;font-weight:600;font-size:clamp(28px,4.4vw,46px);
+  line-height:1.14;margin:0 auto 20px;max-width:30ch}}
 .hero .sub{{color:#c9d6ec;font-size:clamp(16px,2.3vw,20px);max-width:60ch;margin:0 auto 30px;line-height:1.5}}
 .cta{{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:8px}}
 .btn{{display:inline-block;padding:12px 20px;border-radius:10px;font-weight:600;font-size:15px;
