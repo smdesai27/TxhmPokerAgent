@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Knowing whether it was good was the hard half · Sanil Desai</title>
+<meta name="description" content="An AlphaHoldem-inspired self-play RL agent for Heads-Up No-Limit Hold&#x27;em — and the evaluation discipline that kept catching my &quot;better&quot; models being worse.">
+<meta property="og:title" content="Knowing whether it was good was the hard half">
+<meta property="og:description" content="An AlphaHoldem-inspired self-play RL agent for Heads-Up No-Limit Hold&#x27;em — and the evaluation discipline that kept catching my &quot;better&quot; models being worse.">
+<meta property="og:type" content="article">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#15233b; --muted:#5b6b82; --line:#e6eaf0; --bg:#ffffff; --soft:#f7f9fc;
+  --blue:#2563eb; --teal:#0d9488; --red:#dc2626; --accent:#2563eb;
+  --maxprose:720px; --maxfig:940px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:18px;line-height:1.72;-webkit-font-smoothing:antialiased}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* hero */
+.hero{background:linear-gradient(165deg,#0f1b30 0%,#1c2e4f 55%,#21487a 100%);color:#fff;
+  padding:84px 24px 72px;text-align:center}
+.hero .kicker{text-transform:uppercase;letter-spacing:.16em;font-size:13px;font-weight:600;
+  color:#9db8e6;margin:0 0 18px}
+.hero h1{font-family:"Source Serif 4",Georgia,serif;font-weight:600;font-size:clamp(30px,5vw,50px);
+  line-height:1.12;margin:0 auto 20px;max-width:14ch}
+.hero .sub{color:#c9d6ec;font-size:clamp(16px,2.3vw,20px);max-width:60ch;margin:0 auto 30px;line-height:1.5}
+.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+.btn{display:inline-block;padding:12px 20px;border-radius:10px;font-weight:600;font-size:15px;
+  border:1.5px solid rgba(255,255,255,.28);color:#fff;transition:.15s}
+.btn:hover{text-decoration:none;transform:translateY(-1px)}
+.btn-primary{background:#3b82f6;border-color:#3b82f6;box-shadow:0 6px 22px rgba(59,130,246,.4)}
+.btn-primary:hover{background:#2f76ee}
+.btn-ghost:hover{background:rgba(255,255,255,.1)}
+.meta{margin-top:18px;color:#8fa6cc;font-size:13.5px}
+.demo-note{margin-top:16px;color:#7e94bc;font-size:12.5px}
+
+/* article */
+article{max-width:var(--maxprose);margin:0 auto;padding:56px 24px 24px}
+article h2{font-family:"Source Serif 4",serif;font-weight:600;font-size:30px;line-height:1.2;
+  margin:56px 0 14px;padding-top:8px;letter-spacing:-.01em}
+article h3{font-weight:700;font-size:21px;margin:38px 0 8px;color:#1d2c45}
+article p{margin:0 0 20px}
+article strong{font-weight:700;color:#0f1b30}
+article em{color:#33425c}
+article ul,article ol{margin:0 0 22px;padding-left:22px}
+article li{margin:0 0 10px}
+article hr{border:0;border-top:1px solid var(--line);margin:46px 0}
+code{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:.86em;
+  background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:1.5px 5px;color:#1d3a6b}
+blockquote{margin:30px 0;padding:18px 26px;background:#fff;border-left:4px solid var(--red);
+  border-radius:0 12px 12px 0;box-shadow:0 4px 18px rgba(20,35,59,.07);
+  font-size:22px;font-weight:600;color:#0f1b30}
+blockquote p{margin:0}
+table{width:100%;border-collapse:collapse;margin:26px 0;font-size:15.5px}
+th,td{border:1px solid var(--line);padding:9px 13px;text-align:left}
+th{background:var(--soft);font-weight:600}
+
+/* figures break out wider than the prose column */
+figure.fig{margin:34px calc(50% - 50vw);max-width:var(--maxfig);
+  margin-left:auto;margin-right:auto;width:min(var(--maxfig),94vw);text-align:center}
+figure.fig img{width:100%;height:auto;border:1px solid var(--line);border-radius:14px;
+  background:#fff;box-shadow:0 10px 34px rgba(20,35,59,.09);padding:10px}
+figcaption{color:var(--muted);font-size:14px;line-height:1.5;margin-top:12px;
+  max-width:var(--maxprose);margin-left:auto;margin-right:auto;text-align:center;padding:0 6px}
+
+footer{border-top:1px solid var(--line);background:var(--soft);margin-top:56px;
+  padding:40px 24px 60px;text-align:center;color:var(--muted);font-size:14.5px}
+footer a{font-weight:600}
+footer .flinks{margin:0 0 14px;display:flex;gap:22px;justify-content:center;flex-wrap:wrap}
+@media(max-width:640px){body{font-size:17px}.hero{padding:60px 18px 52px}article{padding:40px 20px 16px}}
+</style>
+</head>
+<body>
+<header class="hero">
+  <p class="kicker">Self-play reinforcement learning · imperfect-information games</p>
+  <h1>Knowing whether it was good was the hard half</h1>
+  <p class="sub">An AlphaHoldem-inspired self-play RL agent for Heads-Up No-Limit Hold&#x27;em — and the evaluation discipline that kept catching my &quot;better&quot; models being worse.</p>
+  <div class="cta">
+    <a class="btn btn-primary" href="https://txhm-poker-api.onrender.com" target="_blank" rel="noopener">▶ &nbsp;Play the live demo</a>
+    <a class="btn btn-ghost" href="https://github.com/smdesai27/TxhmPokerAgent" target="_blank" rel="noopener">View the code on GitHub</a>
+    <a class="btn btn-ghost" href="AlphaHoldem_RL_deck.pdf" target="_blank" rel="noopener">Download the slides (PDF)</a>
+  </div>
+  <p class="demo-note">The live demo runs on a free instance — the first hand may take ~30s to wake.</p>
+  <p class="meta">Sanil Desai · PyTorch · OpenSpiel · trained on a university GPU cluster</p>
+</header>
+<article>
+<p>Building the agent was the easy half; knowing whether it was good was the hard half.</p>
+<p>This is an AlphaHoldem-inspired, from-scratch self-play reinforcement-learning agent for Heads-Up No-Limit Texas Hold&rsquo;em (HUNL), written in PyTorch. The architecture borrows the silhouette of the AlphaHoldem paper (Zhao et al., AAAI 2022): a pseudo-siamese two-tower network — a card tower over the 7 cards and an LSTM action tower over the betting history — feeding a shared trunk and policy/value heads, around 1.5M parameters, trained with vanilla PPO + GAE against a K-best self-play league over OpenSpiel&rsquo;s universal_poker. It runs on a single GPU.</p>
+<p>It is worth being precise about what this is <em>not</em>. It is not a reproduction of AlphaHoldem — the input representation, the loss, the betting abstraction, and the scale all deviate from the paper, deliberately, so the whole thing trains on one machine. It is not a Slumbot-beater; I never measured the agent against Slumbot, and at the scale a solo developer can reach, beating it is out of reach. And it is not near-Nash: on full HUNL, exploitability is intractable to even measure (on the order of 10^161 information sets), so I make no exploitability claim about the HUNL agent at all.</p>
+<p>So if not those, then what is the point? The interesting content here is the evaluation, not the agent. The differentiator is measurement discipline and honest negative results: choosing metrics that can&rsquo;t be gamed, building a harness that repeatedly caught regressions the training curves had masked, and reporting the failures plainly rather than dressing them up.</p>
+<p>Three acts carry that thesis. First, a rigorous small-game study: on Leduc poker — small enough that exact exploitability (NashConv) is computable — the from-scratch self-play stack walks through the textbook failure-and-fix, showing where naive self-play&rsquo;s guarantees end. Second, a reconciliation: AlphaHoldem reports &ldquo;convergence&rdquo; via training loss, Elo, and head-to-head win-rate, but never measures exploitability — so its claim and my small-game finding are about different quantities, and I work through why that distinction matters. Third, a scaled attempt: I built a vectorized collector, fixed a self-play bug, and ran 90,000 iterations on a GPU (~9e7 hands) warm-started from the best checkpoint — and a fixed-reference evaluation caught that the new model had quietly regressed, losing 511 bb/100 (95% CI [−582, −440], 12k duplicate pairs) to the very checkpoint it started from, even as the training metric stayed positive the entire run.</p>
+<p>The honest ceiling: strong-but-exploitable, measured carefully. The value is the method, not a magnitude.</p>
+<h2 id="the-system-and-the-harness-that-judged-it">The system, and the harness that judged it</h2>
+<h3 id="the-agent-briefly">The agent, briefly</h3>
+<figure class="fig"><img src="figures/01_architecture.svg" alt="Pseudo-siamese two-tower actor–critic (≈1.5M params): a card tower and an LSTM action tower fuse with 11 scalar features into a shared trunk, then split into policy and value heads." loading="lazy"><figcaption>Pseudo-siamese two-tower actor–critic (≈1.5M params): a card tower and an LSTM action tower fuse with 11 scalar features into a shared trunk, then split into policy and value heads.</figcaption></figure>
+<p>The model is the pseudo-siamese actor-critic described above, roughly 1.5M parameters. A <strong>card tower</strong> (a 53-token embedding followed by a 3-layer MLP over the 7 cards — 2 hole, 5 community) and an <strong>LSTM action tower</strong> (over the betting history) feed a shared trunk, which splits into a policy head and a value head. A few design choices were load-bearing for stability rather than for headlines: <strong>LayerNorm throughout</strong> (PPO&rsquo;s small, correlated batches make BatchNorm statistics unreliable), and <strong>post-forward action masking</strong> — the network emits raw logits and legality is applied afterward, so the masking never has to be differentiable or live inside the trunk.</p>
+<p>Training is vanilla <strong>PPO + GAE</strong> against a <strong>K-best self-play league</strong> (Elo-rated, with prioritized-fictitious-self-play opponent sampling) on OpenSpiel&rsquo;s <code>universal_poker</code>, under discrete betting abstractions — FCPA (4 actions) and FCHPA (5). That part worked. It is not the interesting part.</p>
+<h3 id="knowing-whether-it-was-any-good">Knowing whether it was any good</h3>
+<figure class="fig"><img src="figures/03_behavior_gates.svg" alt="The behavior gates in action: a later, longer run scored well on win-rate but had collapsed to fold-heavy, low-entropy play. The entropy and fold gates flagged it and refused promotion." loading="lazy"><figcaption>The behavior gates in action: a later, longer run scored well on win-rate but had collapsed to fold-heavy, low-entropy play. The entropy and fold gates flagged it and refused promotion.</figcaption></figure>
+<p>The harder half was measurement, and most of the engineering effort went here. The agent emits a single win-rate number against a baseline, and that number is easy to fool — an over-folding policy can post a large margin against a weak opponent while being strategically degenerate. So the harness does not promote on win-rate alone. It runs <strong>behavior gates</strong>: envelopes on fold frequency, aggression, policy entropy, and the pot-size mix of bets. A run only graduates if it stays inside all of them.</p>
+<p>This caught a real regression. A later, longer run scored well on the win-rate metric but had <strong>collapsed to a fold-heavy, low-entropy policy</strong> — it was winning by quitting. The entropy and fold gates flagged it automatically and the harness <strong>refused to promote it</strong>. The training-side metric never noticed; the gates did. That episode is the whole argument for having them.</p>
+<p>Two further corrections made the numbers trustworthy:</p>
+<ul>
+<li><strong>Student-t confidence intervals.</strong> With only 3–5 seed means, the prior Normal (1.96) intervals were roughly <strong>40% too narrow</strong> — they overstated certainty. Switching to a Student-t critical value (df = n−1) widened them honestly; on the champion&rsquo;s headline tier the half-width went from ±75 to <strong>±106</strong>.</li>
+<li><strong>Duplicate / mirrored-seat hands.</strong> The agent plays both holdings of the same deal under a common RNG, cancelling hole-card luck. (Against a <em>stochastic</em> opponent the reduction is weak — opponent randomness and board runout survive the pairing — which the docstring states plainly; it bites hardest against deterministic opponents.)</li>
+</ul>
+<h3 id="the-champion-and-one-number-i-retired">The champion, and one number I retired</h3>
+<p>The defensible model is the <strong>Stage D FCHPA 21k checkpoint</strong> (<code>interview_ready_1</code>): it passes every gate and plays a balanced, non-degenerate strategy — <strong>entropy 1.44 bits, fold 46%, raise 11%</strong>.</p>
+<p>One number does <em>not</em> survive scrutiny, and the harness is what exposed it. The often-quoted <strong>&ldquo;+897 bb/100 vs MCCFR-ES&rdquo;</strong> is not a strength-versus-solver result. OpenSpiel&rsquo;s MCCFR average policy plays uniform-random on unvisited information states, and full-deck HUNL has far too many for the solver to be anything but near-random on most lines. The harness&rsquo;s own zero-iteration (uniform) control proves it: adding MCCFR iterations makes the opponent <em>easier</em>, not harder — the <code>control_delta</code> is negative across every tier. So I treat that figure as a sanity check against a near-random control, not as evidence of strength.</p>
+<p>That retirement is what motivated the next act. If win-rate against a baseline can be this misleading, I needed a metric that does not depend on the choice of opponent at all.</p>
+<h2 id="the-rigorous-core-exact-exploitability-on-leduc">The rigorous core: exact exploitability on Leduc</h2>
+<p>Head-to-head win-rate, the metric most poker bots report, is opponent-dependent and gameable — Lisý and Bowling&rsquo;s local-best-response work showed two bots that tied head-to-head (within ~20 mbb/g) yet differed by roughly 1300 mbb/g in exploitability. The ungameable metric is exploitability (NashConv): the gain an optimal counter-strategy extracts, independent of any fixed opponent. On full HUNL that quantity is intractable — the game has on the order of 10^161 information sets — so I could not measure it on the agent I trained. Instead I moved the question to a game where the same metric is <em>exact</em>: Leduc poker, 936 information states, where OpenSpiel computes NashConv in closed form. Leduc is not the deliverable; it is an instrument for probing the <strong>learning dynamics</strong> of the exact PPO + self-play recipe the HUNL stack uses. The harness reuses the project&rsquo;s own GAE and post-forward masked logits and the same PPO hyperparameters as the HUNL configs, so it exercises the real recipe rather than a toy.</p>
+<p>One units caveat shapes every comparison below: OpenSpiel&rsquo;s <code>nash_conv</code> returns the <strong>sum of both players&rsquo; best-response gains</strong>, roughly 2x the single-player &ldquo;exploitability&rdquo; most papers quote. So tuned NFSP&rsquo;s published ~0.06 single-player sits near ~0.12 on this axis, and tabular CFR+ lands around ~0.05 NashConv. On the same axis a uniform-random policy measures ~4.76 and Nash is 0.</p>
+<h3 id="the-investigation-r1r10">The investigation (R1–R10)</h3>
+<figure class="fig"><img src="figures/04_leduc_convergence.svg" alt="Leduc poker (936 states), where exploitability is exact: the raw PPO self-play iterate cycles, while NFSP-style strategy-averaging is the only non-divergent estimator — plateauing near 0.56." loading="lazy"><figcaption>Leduc poker (936 states), where exploitability is exact: the raw PPO self-play iterate cycles, while NFSP-style strategy-averaging is the only non-divergent estimator — plateauing near 0.56.</figcaption></figure>
+<p>I ran the recipe through ten rounds of sweeps (~35 configs). The arc is a textbook failure-and-fix:</p>
+<ul>
+<li><strong>The tuned PPO self-play iterate cycles.</strong> Entropy, larger batches, and learning-rate annealing drove the <em>best checkpoint</em> to NashConv 0.67 (~7x below random), but the current iterate does not settle — its final value diverges back up into the 1.3–2.6 range, and on the 500-iter baseline the iterate spikes as high as 4.88 while its time-average holds near 2.0. This is the expected signature of best-response cycling in imperfect-information self-play: the current iterate orbits the equilibrium rather than approaching it.</li>
+<li><strong>Averaging the snapshot networks fails.</strong> The obvious fix — averaging policy-network parameters/outputs over the trajectory — gave 0.84–1.28, <em>worse</em> than the best single checkpoint. The iterates make wide excursions (0.67 to ~2.6), so averaging their parameters yields a muddy mixture, not the equilibrium.</li>
+<li><strong>NFSP-style strategy-averaging is the only non-divergent estimator.</strong> Averaging the <em>strategy</em> — training a supervised average-policy net on a reservoir of best-response actions, the NFSP-lite construction (Heinrich and Silver 2016) — stops the cycling. With a strong best-responder over 20k iterations across two seeds, the averaged policy stabilizes at NashConv finals of 0.538 and 0.588 (mean 0.56). The curve is broadly decreasing then plateauing with local fluctuations; it is not monotone (one seed up-steps near 19k, the other rises slightly at the very end) and it does not approach Nash.</li>
+</ul>
+<p>I then spent three more rounds (R8–R10) trying to make the <em>iterate itself</em> converge last-iterate, via MMD / NashPG — PPO with a reverse-KL term toward a periodically-refreshed magnet policy (the MMD → R-NaD/DeepNash lineage). This is an honest negative: across hard-refresh, explicit proximal-KL, and smooth-EMA / no-refresh magnets, and sweeps over the KL coefficient, refresh rate, and epoch count, regularization reliably <strong>damped the catastrophic divergence</strong> (plain PPO blows up to ~4.88; MMD stays bounded ~1–2.5) but never pinned the iterate low — it found ~0.8–1.0 dips and then wandered ~0.9–2.5. The diagnosed cause matches the literature: clean MMD/R-NaD/NeuRD rely on all-actions counterfactual values, whereas a <em>sampled</em> GAE advantage is too noisy. Supplying all-actions values is Deep-CFR-scale work, out of scope here. A faithful-NFSP variant (anticipatory eta = 0.1) gave a cleaner monotone descent but was data-starved on an on-policy PPO best-responder (0.73 at 8k), so the eta = 1 result above stands.</p>
+<h3 id="what-this-is-and-is-not">What this is, and is not</h3>
+<figure class="fig"><img src="figures/05_calibration_ladder.svg" alt="Calibrated against references: ≈8× below uniform-random, but still ≈9× above tuned NFSP. The 0.56 plateau is reported as methodology, not as a headline magnitude." loading="lazy"><figcaption>Calibrated against references: ≈8× below uniform-random, but still ≈9× above tuned NFSP. The 0.56 plateau is reported as methodology, not as a headline magnitude.</figcaption></figure>
+<p>Calibrated against the references — random ~4.76, tabular CFR+ ~0.05, tuned NFSP ~0.06, Nash 0 — the 0.56 plateau is ~8x below random but still ~9x above tuned NFSP. It is <strong>not near-Nash and not unexploitable</strong>, and the magnitude is not a result on its own: Leduc is a solved game where tabular CFR reaches ~0 in seconds. A four-lens adversarial review (game-theory, statistics, skeptic, recruiter) returned a unanimous verdict to report this as <strong>methodology, not a headline number</strong>. I agree. The contribution is the discipline: choosing an exact, deterministic, opponent-independent metric precisely <em>because</em> HUNL&rsquo;s is intractable; a controlled three-way ablation isolating <em>why</em> strategy-averaging works; and honest negatives reported rather than buried — snapshot-network averaging rejected, NFSP-lite initially worse than the PPO checkpoint, Trinal-Clip bit-identical to vanilla at Leduc&rsquo;s chip scale, and MMD failing to converge last-iterate. This is a learning-dynamics probe on Leduc; the 0.56 number belongs to that probe and is never attached to the HUNL agent.</p>
+<h2 id="reconciling-with-alphaholdems-convergence">Reconciling with AlphaHoldem&rsquo;s &ldquo;convergence&rdquo;</h2>
+<p>An obvious objection: AlphaHoldem reports that its agent converged, so why does the self-play iterate in my Leduc probe cycle rather than settle? The short answer is that we measured different quantities. There is no contradiction.</p>
+<p>AlphaHoldem never measures exploitability. Its notion of &ldquo;convergence&rdquo; rests on three signals: the Trinal-Clip PPO training loss flattening, Elo plateauing inside its self-play league (the model-selection metric), and head-to-head win-rate in mbb/h — the paper reports +111.6 against Slumbot, with smaller margins against a DeepStack reimplementation and against humans. On full HUNL (on the order of 10^161 information sets), it explicitly concedes that best-response computation is prohibitive and never computes a NashConv. So &ldquo;converged&rdquo; there means &ldquo;the loss stopped moving, the league rating stabilized, and it wins games&rdquo; — not &ldquo;approaches a Nash equilibrium.&rdquo;</p>
+<p>That distinction matters because win-rate is not exploitability, and as the Lisý and Bowling result already showed, the gap can be enormous — two agents tied head-to-head yet ~1300 mbb/g apart in measured exploitability. A strong head-to-head record is therefore consistent with a strategy that remains highly exploitable — it simply cannot be detected without a best-response test, which HUNL does not admit.</p>
+<p>So my Leduc study (936 information states, where exact exploitability is computable) is not a failed reproduction; it is the test AlphaHoldem could not run. It shows that on a game where the answer is checkable, a plain self-play iterate cycles, while strategy-averaging is the only non-divergent estimator I found.</p>
+<p>It is worth being precise about what AlphaHoldem genuinely did differently: Trinal-Clip PPO to bound a high-variance gradient, K-Best self-play to damp Elo cycling against the league, pseudo-siamese CNN towers, and roughly 2.7B hands over 8 GPUs for three days. Each of those targets win-rate and training stability. None of them targets exploitability — so none of them resolves the dynamics the small-game probe exposes.</p>
+<h2 id="the-scaled-gpu-attempt-and-the-regression-the-evaluation-caught">The scaled GPU attempt — and the regression the evaluation caught</h2>
+<p>Having a champion that passed every gate, I wanted to know whether I could push it further: a stronger head-to-head FCHPA agent, trained at larger scale on a GPU. This is the part of the project where the spine — <em>knowing whether it was good was the hard half</em> — earned its keep.</p>
+<h3 id="making-scale-possible">Making scale possible</h3>
+<p>The first obstacle was throughput, not the algorithm. The original self-play collector stepped one game at a time with batch-size-1 inference, which left the GPU effectively idle — the wall-clock was dominated by Python-side game stepping, not matrix multiplies. I rewrote the collector to run B games in lockstep and batch all policy/value inference into a single forward pass, which lifted collection throughput by roughly 30–100x depending on configuration. Along the way I fixed an inverted opponent-sampling bug in the league (the PFSP weighting had been favoring the <em>strongest</em> opponents, the opposite of the intended prioritization) and switched the loss to Trinal-Clip.</p>
+<p>With that in place I warm-started from the champion (the Stage D FCHPA 21k checkpoint) and ran 90,000 iterations on a single GPU — about 38 hours of wall-clock and on the order of 9×10⁷ hands.</p>
+<h3 id="the-training-metric-looked-fine-the-whole-way">The training metric looked fine the whole way</h3>
+<p>Throughout the run, the metric you would naturally watch — rollout return against the co-evolving self-play league — stayed positive, hovering around +3 to +12 bb the entire time. By that signal the model was steadily winning. Nothing in the training curve suggested a problem.</p>
+<h3 id="what-the-fixed-reference-ladder-showed">What the fixed-reference ladder showed</h3>
+<figure class="fig"><img src="figures/02_metric_mirage.svg" alt="The metric mirage: the training signal (return vs the co-evolving league) stayed positive the entire 90k-iteration run, while a fixed-reference ladder showed the model had regressed −511 bb/100." loading="lazy"><figcaption>The metric mirage: the training signal (return vs the co-evolving league) stayed positive the entire 90k-iteration run, while a fixed-reference ladder showed the model had regressed −511 bb/100.</figcaption></figure>
+<p>The training metric is measured against a <em>moving</em> opponent, so it can only tell you the model is improving relative to a league that is itself drifting. To get an absolute read I ran the own-checkpoint ladder: the new model against a fixed strong reference — the champion — over 12,000 duplicate, mirrored-seat hands.</p>
+<p>First the sanity check. New-versus-new (the same checkpoint against itself) came back at +14.6 bb/100 with a 95% CI of [−11, +40], straddling zero — the harness was behaving correctly. Then the real comparison:</p>
+<blockquote>
+<p><strong>New (90k) vs Champion (21k): −511 bb/100, 95% CI [−582, −440].</strong></p>
+</blockquote>
+<p>The scaled model <em>lost</em> to the checkpoint it started from, decisively and outside the interval. I confirmed it was not a loading artifact — the strict <code>load_state_dict</code> accepted the weights without error, so the trained network was genuinely the one being measured. After 38 hours and ~90M hands, the model had regressed.</p>
+<h3 id="diagnosing-it-over-aggression-drift-not-collapse">Diagnosing it: over-aggression drift, not collapse</h3>
+<figure class="fig"><img src="figures/06_over_aggression.svg" alt="The diagnosis — over-aggression drift, not collapse: the scaled model beats a random opponent even harder than the champion, but a calling station trivially punishes its bluff-happy style." loading="lazy"><figcaption>The diagnosis — over-aggression drift, not collapse: the scaled model beats a random opponent even harder than the champion, but a calling station trivially punishes its bluff-happy style.</figcaption></figure>
+<p>A behavior probe located the failure precisely. The new model was not collapsed — against a random opponent it scored +1029 bb/100, even harder than the champion&rsquo;s +948. But against a calling station (an always-call opponent), it lost −612 bb/100, where the balanced champion <em>won</em> +539. It had drifted into a bluff-happy style: punishing opponents that fold, trivially exploited by anyone who simply calls down.</p>
+<p>The root cause was in the training mix. There were no calling opponents present to punish over-aggression, and the co-evolving league learned to fold to the rising aggression — a feedback loop that rewarded ever-more-aggressive play right up until it met something that wouldn&rsquo;t fold.</p>
+<h3 id="why-this-is-the-point-not-a-footnote">Why this is the point, not a footnote</h3>
+<p>I&rsquo;ll be plain: as an attempt to build a <em>stronger</em> bot, this was a negative result. The champion remains the strongest model I have.</p>
+<p>But it is the cleanest demonstration of the entire project&rsquo;s thesis. The training metric — return versus the co-evolving league — stayed positive for the full run while the strategy quietly wandered away from a certified-good policy. Only the fixed strong reference exposed it. That is the same lesson the small-game learning-dynamics probe surfaced, and the same caution the AlphaHoldem authors raise about league win-rate: progress measured against a moving target is not progress. The evaluation harness caught exactly the kind of regression that training curves are structurally unable to see — which is the reason I built it the way I did.</p>
+<h2 id="throughlines-what-it-demonstrates-and-honest-limitations">Throughlines, what it demonstrates, and honest limitations</h2>
+<p>Three throughlines run through this project, and none of them is &ldquo;I built a poker bot.&rdquo;</p>
+<p><strong>1. Choose ungameable metrics over flattering ones.</strong> The headline win-rate against the MCCFR-ES baseline turned out to be near-random — the harness&rsquo;s own zero-iteration control beat the agent by more than the trained tiers did, so the number measured the opponent&rsquo;s weakness, not the agent&rsquo;s strength. The response was to move toward metrics that resist gaming: exact exploitability (NashConv) on Leduc, where it is computable over 936 information states; fixed-reference self-play ladders; and a Local Best Response lower bound. On Leduc, with the same recipe as the HUNL configs, the raw PPO self-play iterate cycles (best checkpoint 0.67, final wandering to 1.3–2.6), averaging the snapshot networks fails (0.84–1.28), and only NFSP-style strategy-averaging is non-divergent, plateauing at NashConv 0.538 / 0.588 across two seeds (random ≈ 4.76, tuned NFSP ≈ 0.06, Nash = 0). That last number is roughly 9x above tuned NFSP — reported as methodology, not as a headline.</p>
+<p><strong>2. Honest negative results are the backbone.</strong> The self-play iterate cycles rather than settling. Network-parameter averaging fails. Trinal-Clip is bit-identical to vanilla PPO at Leduc&rsquo;s ~14-chip scale (the dual-clip never fires on-policy). The simplified Elo-kBSP league underperformed a plain rolling pool (averaged-policy exploitability 2.49 vs 1.50 on the ablation). And the scaled run — a vectorized collector at roughly 30–100x throughput, 90,000 iterations, ~9e7 hands, warm-started from the champion — lost 511 bb/100 (CI95 [−582, −440], 12k duplicate pairs) to that champion. The behavior probe diagnosed over-aggression drift: the new model beat a random opponent harder than the champion (+1029 vs +948) but was trivially punished by a calling station (−612, where the champion sat at +539). Root cause was a training opponent mix with no calling opponents and a co-evolving league that folded to aggression.</p>
+<p><strong>3. Evaluation discipline repeatedly caught what training metrics masked.</strong> Throughout that scaled run, the rollout reward against the co-evolving league stayed positive; only the fixed-reference ladder surfaced the regression. The behavior gates earlier refused to promote an entropy-collapsed checkpoint. The Student-t CI correction widened a half-width from ±75 to ±106, exposing intervals the Normal approximation had understated by roughly 40%.</p>
+<p>The honest ceiling: this is strong-but-exploitable, measured rigorously — not near-Nash, not a record win-rate. The throughput gap against AlphaHoldem&rsquo;s ~2.7B hands over 8 GPUs and 3 days is real and not closeable solo. What transfers is the part that matters for real-time ML work: first-principles systems building, measurement rigor, and the discipline to publish the negative result rather than the flattering one.</p>
+<hr />
+<h2 id="code-and-artifacts">Code and artifacts</h2>
+<p>Every quantitative claim above is backed by a committed config, script, or run log:</p>
+<ul>
+<li><strong>Leduc exploitability investigation (R1–R10):</strong> <a href="https://github.com/smdesai27/TxhmPokerAgent/blob/main/docs/leduc_sweep_log.md"><code>docs/leduc_sweep_log.md</code></a> (round-by-round results + the &ldquo;report as methodology&rdquo; review), harnesses <code>poker_rl_agent/scripts/validate_leduc_exploitability.py</code> (PPO self-play, MMD/NashPG) and <code>validate_leduc_nfsp.py</code> (strategy-averaging), tabular anchor <code>leduc_cfr_anchor.py</code>. The ~0.05 CFR+ figure is the local anchor run on the NashConv axis.</li>
+<li><strong>Reconciling with AlphaHoldem + the path-to-strong analysis:</strong> <a href="https://github.com/smdesai27/TxhmPokerAgent/blob/main/HANDOFF.md"><code>HANDOFF.md</code></a> §5.3 and <a href="https://github.com/smdesai27/TxhmPokerAgent/blob/main/docs/strong_hunl_roadmap.md"><code>docs/strong_hunl_roadmap.md</code></a>.</li>
+<li><strong>The scaled GPU attempt + the regression:</strong> <a href="https://github.com/smdesai27/TxhmPokerAgent/blob/main/docs/strong_fchpa_run_state.md"><code>docs/strong_fchpa_run_state.md</code></a> (run config, throughput fix, the −511 ladder result, and the over-aggression behavior probe). The vectorized collector is <code>poker_rl_agent/algorithms/vectorized_self_play.py</code>; the PFSP fix is in <code>poker_rl_agent/training/league_manager.py</code>; the fixed-reference ladder is <code>poker_rl_agent/scripts/evaluate_own_ladder.py</code>.</li>
+<li><strong>Evaluation harness:</strong> behavior gates and duplicate-hand evaluation in <code>poker_rl_agent/evaluation/evaluator.py</code>; Student-t intervals in <code>poker_rl_agent/evaluation/stats.py</code>.</li>
+</ul>
+<p><em>Reproducibility note: head-to-head figures are reported with sample size and 95% CI; the behavior-probe point estimates (vs random / always-call) are diagnostic — their intervals are in <code>docs/strong_fchpa_ladder/behavior_probe.json</code> and do not overlap, so the qualitative diagnosis (loses to a calling station, beats a folder) holds.</em></p>
+</article>
+<footer>
+  <div class="flinks">
+    <a href="https://txhm-poker-api.onrender.com" target="_blank" rel="noopener">Live demo</a>
+    <a href="https://github.com/smdesai27/TxhmPokerAgent" target="_blank" rel="noopener">GitHub repository</a>
+    <a href="AlphaHoldem_RL_deck.pdf" target="_blank" rel="noopener">Slide deck (PDF)</a>
+  </div>
+  <p>Written by Sanil Desai. Every quantitative claim is backed by a committed config, script, or run log.</p>
+</footer>
+</body>
+</html>

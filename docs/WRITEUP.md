@@ -20,7 +20,7 @@ The honest ceiling: strong-but-exploitable, measured carefully. The value is the
 
 ### The agent, briefly
 
-The model is the pseudo-siamese actor-critic described above, roughly 1.5M parameters. A **card tower** (a CNN over the 7 cards — 2 hole, 5 community) and an **LSTM action tower** (over the betting history) feed a shared trunk, which splits into a policy head and a value head. A few design choices were load-bearing for stability rather than for headlines: **LayerNorm throughout** (PPO's small, correlated batches make BatchNorm statistics unreliable), and **post-forward action masking** — the network emits raw logits and legality is applied afterward, so the masking never has to be differentiable or live inside the trunk.
+The model is the pseudo-siamese actor-critic described above, roughly 1.5M parameters. A **card tower** (a 53-token embedding followed by a 3-layer MLP over the 7 cards — 2 hole, 5 community) and an **LSTM action tower** (over the betting history) feed a shared trunk, which splits into a policy head and a value head. A few design choices were load-bearing for stability rather than for headlines: **LayerNorm throughout** (PPO's small, correlated batches make BatchNorm statistics unreliable), and **post-forward action masking** — the network emits raw logits and legality is applied afterward, so the masking never has to be differentiable or live inside the trunk.
 
 Training is vanilla **PPO + GAE** against a **K-best self-play league** (Elo-rated, with prioritized-fictitious-self-play opponent sampling) on OpenSpiel's `universal_poker`, under discrete betting abstractions — FCPA (4 actions) and FCHPA (5). That part worked. It is not the interesting part.
 

@@ -5,8 +5,9 @@ A from-scratch PyTorch reinforcement-learning system for **Heads-Up No-Limit Tex
 It trains an actor-critic with **PPO + GAE**, a **K-best self-play league**, and a multi-stage betting-abstraction
 curriculum, and ships with an **automated evaluation harness** and a **live play-against-the-agent web demo**.
 
-- **Repo:** [smdesai27/anitgravity-txhm](https://github.com/smdesai27/anitgravity-txhm)
-- **Live demo:** _add your Vercel URL here_ (frontend on Vercel, FastAPI inference backend on Render)
+- **Repo:** [smdesai27/TxhmPokerAgent](https://github.com/smdesai27/TxhmPokerAgent)
+- **Live demo:** [txhm-poker-api.onrender.com](https://txhm-poker-api.onrender.com) — play HUNL against the agent (free instance; first hand may take ~30s to wake)
+- **Writeup & slides:** [docs/WRITEUP.md](docs/WRITEUP.md) · [docs/AlphaHoldem_RL_deck.pdf](docs/AlphaHoldem_RL_deck.pdf)
 - **Best agent:** Stage D FCHPA (5-action) checkpoint at 21k steps — `checkpoints/snapshots/interview_ready/interview_ready_1.pt`
 
 > **Scope note (please read).** This is an *AlphaHoldem-inspired* system, **not a faithful reproduction** of the
