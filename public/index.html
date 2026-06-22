@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AlphaHoldem-Inspired Poker Agent — Live Demo</title>
+  <meta name="description" content="Play heads-up no-limit hold'em against a from-scratch, AlphaHoldem-inspired self-play RL agent. A portfolio demo built around evaluation rigor.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">
+      <h1>Heads-Up Poker RL Agent</h1>
+      <p class="tagline">Play heads-up no-limit hold'em against a from-scratch, AlphaHoldem-<em>inspired</em> self-play RL agent.</p>
+    </div>
+    <div class="header-right">
+      <div class="agent-badge" id="agent-badge" title="Live backend status">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="agent-badge-text">connecting to agent…</span>
+      </div>
+      <nav class="header-links">
+        <a id="link-writeup" href="#" target="_blank" rel="noopener">Read the writeup</a>
+        <a id="link-github" href="#" target="_blank" rel="noopener">Source ↗</a>
+      </nav>
+    </div>
+  </header>
+
+  <section class="about-strip">
+    <p>
+      <strong>What this is:</strong> a ~1.5M-parameter actor-critic (card&nbsp;tower&nbsp;+&nbsp;LSTM action tower),
+      trained from scratch with PPO and a K-best self-play league, served here as its gate-passing champion checkpoint.
+    </p>
+  </section>
+
+  <div class="main-layout">
+    <div class="table-area">
+      <div class="controls-bar">
+        <label class="control">
+          <span>Your seat</span>
+          <select id="seat-select">
+            <option value="1" selected>Small blind / button (you act first)</option>
+            <option value="0">Big blind</option>
+          </select>
+        </label>
+        <button id="btn-new-session" class="btn-primary">New session</button>
+        <button id="btn-new-hand" class="btn-secondary" disabled>New hand</button>
+        <label class="toggle-label control">
+          <input type="checkbox" id="chk-auto-continue">
+          <span>Auto-continue</span>
+        </label>
+      </div>
+
+      <div class="poker-table" id="poker-table">
+        <div class="player-area" id="bot-area">
+          <div class="player-nameplate">
+            <span class="player-label">Agent</span>
+            <span class="player-stack" id="bot-stack"></span>
+          </div>
+          <div class="cards" id="bot-cards"></div>
+        </div>
+
+        <div class="board-area">
+          <span class="street-label" id="street-label"></span>
+          <div class="cards board" id="board-cards"></div>
+          <span class="pot-label" id="pot-label"></span>
+          <span class="turn-indicator hidden" id="turn-indicator"></span>
+        </div>
+
+        <div class="player-area" id="hero-area">
+          <div class="cards" id="hero-cards"></div>
+          <div class="player-nameplate">
+            <span class="player-label">You</span>
+            <span class="player-stack" id="hero-stack"></span>
+          </div>
+        </div>
+
+        <p class="placeholder-msg" id="placeholder">Click <strong>New session</strong> to deal in.</p>
+      </div>
+
+      <div class="actions-bar" id="actions-bar"></div>
+    </div>
+
+    <aside class="sidebar">
+      <section class="panel">
+        <h3>Session stats</h3>
+        <div class="stats-section" id="stats-section">
+          <div class="stat-row"><span class="stat-label">Hands played</span><span id="stat-hands">—</span></div>
+          <div class="stat-row"><span class="stat-label">Your chips</span><span id="stat-human-chips">—</span></div>
+          <div class="stat-row"><span class="stat-label">Your bb/100</span><span id="stat-human-bb">—</span></div>
+          <div class="stat-row"><span class="stat-label">Agent chips</span><span id="stat-bot-chips">—</span></div>
+          <div class="stat-row"><span class="stat-label">Agent bb/100</span><span id="stat-bot-bb">—</span></div>
+        </div>
+      </section>
+      <section class="panel history-panel">
+        <h3>Hand history</h3>
+        <div class="history-log" id="history-log">
+          <div class="event system">Start a session to see the play-by-play.</div>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="site-footer">
+    <span>Built by Sanil Desai · AlphaHoldem-inspired (not a reproduction) · evaluated with exact Leduc exploitability, fixed-reference ladders &amp; behavior gates.</span>
+  </footer>
+
+  <div class="result-overlay hidden" id="result-overlay">
+    <div class="result-card">
+      <h2>Hand complete</h2>
+      <div class="chips" id="result-chips"></div>
+      <div class="result-details" id="result-details"></div>
+      <button id="result-next" class="btn-primary">Next hand</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/config.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

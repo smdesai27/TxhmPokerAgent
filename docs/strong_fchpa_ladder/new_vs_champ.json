@@ -1,0 +1,20 @@
+{
+  "checkpoint_a": "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/checkpoints/snapshots/strong_fchpa/strong_fchpa_gpu_3330857.pt",
+  "checkpoint_b": "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/checkpoints/snapshots/interview_ready/interview_ready_1.pt",
+  "config_name": "strong_fchpa_gpu",
+  "config_name_b": "strong_fchpa_gpu",
+  "betting_abstraction": "fchpa",
+  "num_actions": 5,
+  "seed": 7,
+  "self_play_oracle": false,
+  "bb_per_100": -511.06875,
+  "ci95_lower": -582.408117374023,
+  "ci95_upper": -439.72938262597705,
+  "bb_per_100_stderr": 36.39763641531785,
+  "winner": "checkpoint_b",
+  "pairs": 12000,
+  "episodes": 24000,
+  "method": "duplicate_mirrored_seat",
+  "ci_method": "normal",
+  "note": "Real strength signal: checkpoint-vs-checkpoint, variance-reduced via mirrored duplicate hands, Student-t 95% CI over `pairs` per-pair means. NOT the MCCFR-ES '+897' number (that baseline is near-random and is not strength)."
+}

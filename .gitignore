@@ -1,0 +1,33 @@
+venv/
+wandb/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.idea/
+.vscode/
+
+# Generated / build artifacts
+*.egg-info/
+
+# Docs: ignore stray markdown by default, but track the curated ones.
+*.md
+!CLAUDE.md
+!README.md
+!AUDIT_AND_PRESENTATION_PLAN.md
+!HANDOFF.md
+!docs/*.md
+
+# Experiment scratch — results live on the HPC / W&B, not in git.
+logs/
+artifacts/
+
+# Checkpoints: track only the deploy weight + the certified champion snapshot.
+checkpoints/*
+!checkpoints/checkpoint_aliases.json
+!checkpoints/checkpoint_index.json
+!checkpoints/latest.pt
+!checkpoints/snapshots/
+checkpoints/snapshots/*
+!checkpoints/snapshots/interview_ready/
+.vercel

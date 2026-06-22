@@ -1,0 +1,231 @@
+{
+  "generated_utc": "2026-02-24T07:04:16.229355+00:00",
+  "root": "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/checkpoints",
+  "count": 32,
+  "records": [
+    {
+      "path": "best_eval_final_optimization_low_temp.pt",
+      "role": "active",
+      "size_bytes": 6054196,
+      "mtime_utc": "2026-02-24T00:56:49.083888+00:00",
+      "sha256": "d55bd0726612f56fc7d8deefe108efecf8db47445c7da21206d923efedda1e2a"
+    },
+    {
+      "path": "latest.pt",
+      "role": "active",
+      "size_bytes": 139195775,
+      "mtime_utc": "2026-02-24T07:04:10.491343+00:00",
+      "sha256": "87b4c084f15090c4b46fe6c0989ef818e976a7cf2789bffcd35900af346ece04"
+    },
+    {
+      "path": "snapshots/final_opt/475140_20260223_053629.pt",
+      "role": "snapshot",
+      "size_bytes": 139187647,
+      "mtime_utc": "2026-02-23T15:43:13.369286+00:00",
+      "sha256": "9ddf424d7febc89f482adc4a5e76de1255bb54af0e596ce62fb9bf81244c6c72"
+    },
+    {
+      "path": "snapshots/final_opt/478053_20260223_144040.pt",
+      "role": "snapshot",
+      "size_bytes": 139195775,
+      "mtime_utc": "2026-02-24T07:04:13.508312+00:00",
+      "sha256": "87b4c084f15090c4b46fe6c0989ef818e976a7cf2789bffcd35900af346ece04"
+    },
+    {
+      "path": "snapshots/interview_ready/interview_ready_1.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:58.941901+00:00",
+      "sha256": "a0dfc4b68a92a3d940e284a93fb6990ec0e7c01b3a0f027aa5c609d605d158c8"
+    },
+    {
+      "path": "snapshots/manual/stage_d_12k_baseline.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:58.994682+00:00",
+      "sha256": "eb938f40f969502da824f2ade0bbde4478e6150550544cc30452c363d0565a4e"
+    },
+    {
+      "path": "snapshots/stage_d/ablate_a_latest.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-14T16:21:49+00:00",
+      "sha256": "eb938f40f969502da824f2ade0bbde4478e6150550544cc30452c363d0565a4e"
+    },
+    {
+      "path": "snapshots/stage_d/ablations/ablate_a_latest.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.044149+00:00",
+      "sha256": "eb938f40f969502da824f2ade0bbde4478e6150550544cc30452c363d0565a4e"
+    },
+    {
+      "path": "snapshots/stage_d/ablations/stage_d_12k_baseline.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.128565+00:00",
+      "sha256": "eb938f40f969502da824f2ade0bbde4478e6150550544cc30452c363d0565a4e"
+    },
+    {
+      "path": "snapshots/stage_d/champion/20260214_180638_stage_d_16k_champion.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.185835+00:00",
+      "sha256": "467e4b0915de1300d10afd5fc5ec358b4613f7abb0e23d0ebeddbe037cb95d01"
+    },
+    {
+      "path": "snapshots/stage_d/champion/20260214_181020_stage_d_16k_champion.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.249067+00:00",
+      "sha256": "467e4b0915de1300d10afd5fc5ec358b4613f7abb0e23d0ebeddbe037cb95d01"
+    },
+    {
+      "path": "snapshots/stage_d/champion/20260215_102605_stage_d_16k_champion.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.296599+00:00",
+      "sha256": "467e4b0915de1300d10afd5fc5ec358b4613f7abb0e23d0ebeddbe037cb95d01"
+    },
+    {
+      "path": "snapshots/stage_d/corrective/quadro_stage_d_fchpa_recover_diverse_corrective_17k_375824.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.349259+00:00",
+      "sha256": "a9ed4ca0fa6dc867ba371ad60805d02e2ebe3e64262ad54211eb93eacc066cef"
+    },
+    {
+      "path": "snapshots/stage_d/corrective/quadro_stage_d_fchpa_recover_diverse_corrective_20k_flatexplore_380978.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.399504+00:00",
+      "sha256": "f01ab5466034fffa3482c6cf0ae68ecdbaf062a966d21d343a28f136f08a393d"
+    },
+    {
+      "path": "snapshots/stage_d/corrective/quadro_stage_d_fchpa_recover_value_stable_corrective_18k_380273.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.453164+00:00",
+      "sha256": "bccfdad9766c08b79b4a57e38189ed45c5f9087abb5da4750731ec76440d6b50"
+    },
+    {
+      "path": "snapshots/stage_d/recovery/anchor_18k.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.509297+00:00",
+      "sha256": "bccfdad9766c08b79b4a57e38189ed45c5f9087abb5da4750731ec76440d6b50"
+    },
+    {
+      "path": "snapshots/stage_d/recovery/interview_continue_24k_20260216_230507.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T08:08:00.419174+00:00",
+      "sha256": "b0e65a06ca236c18e7593c349776a7953ac70ae645ad7c48951eee876493a254"
+    },
+    {
+      "path": "snapshots/stage_d/recovery/longrun_30k_20260217_111124.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-18T07:20:15.929321+00:00",
+      "sha256": "899f48e8877126547a6e392eb5098a423236b3a00f0101f05ea4e22ff3621de4"
+    },
+    {
+      "path": "snapshots/stage_d/recovery/longrun_rebalance_34k_20260220_012455.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-20T08:59:15.212626+00:00",
+      "sha256": "ed8019e939192e7574bb3f06579391f39c970e001b0de8b645634c7318e07414"
+    },
+    {
+      "path": "snapshots/stage_d/recovery/quadro_stage_d_fchpa_evfirst_probe_h1_20k_20260216_161321.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.560331+00:00",
+      "sha256": "cb4c27bbb0ea8c20b47008335020c878c77b6c04582f81ece400021fdc97d006"
+    },
+    {
+      "path": "snapshots/stage_d/recovery/quadro_stage_d_fchpa_evfirst_probe_h2_20k_20260216_161321.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.611818+00:00",
+      "sha256": "4fe1d0917385140ddd0d207eee6f1be1ff1db15547eecc65d70cb28b99cfcefc"
+    },
+    {
+      "path": "snapshots/stage_d/recovery/quadro_stage_d_fchpa_recover_balanced_probe_19k_20260215_155748.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.660837+00:00",
+      "sha256": "b17e08106d93bd4b871ab27f7c406011915a9b3e16195d9845f2fcf44e4787bc"
+    },
+    {
+      "path": "snapshots/stage_d/recovery/quadro_stage_d_fchpa_recover_c1_strict_conservative_20k_20260215_230226.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.710217+00:00",
+      "sha256": "a972abf743b0a03d929ba26aa5e5e527136c9b22f5b81a09257cc6169cc190b7"
+    },
+    {
+      "path": "snapshots/stage_d/recovery/quadro_stage_d_fchpa_recover_c2_halfpot_nudge_20k_20260215_230226.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.764106+00:00",
+      "sha256": "e04f3571ed6c86a312544eb193d01e639ff4fa9f9a90054468acb4ae3c5ea44f"
+    },
+    {
+      "path": "snapshots/stage_d/recovery/quadro_stage_d_fchpa_recover_conservative_probe_19k_20260215_155748.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.816707+00:00",
+      "sha256": "3a9935a5b5f3aa9507785f16f44995d153674b7a102321cacd7e9890b368e02b"
+    },
+    {
+      "path": "snapshots/stage_d/recovery/quadro_stage_d_fchpa_recover_selected_20k_20260215_202915.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.869523+00:00",
+      "sha256": "993421c55e26df4e6104f0e75d808832ef2a4928afdf9f47d357db42469261f2"
+    },
+    {
+      "path": "snapshots/stage_d/recovery/quadro_stage_d_fchpa_restore_potmix_p1_20k_20260216_113336.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.923641+00:00",
+      "sha256": "03d8ee1bc47daecefa1b5d5df630e3c8a21d5d63eed9881c775877f3501d3c47"
+    },
+    {
+      "path": "snapshots/stage_d/recovery/quadro_stage_d_fchpa_restore_potmix_p2_20k_20260216_113336.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:02:59.974236+00:00",
+      "sha256": "11074e7531b01b1a34f2caef0f624ce5cf9b7ef72ba0a3c4d16f07098f2ea355"
+    },
+    {
+      "path": "snapshots/stage_d/recovery/selected_21k_auto_20260216_161321.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:03:00.022921+00:00",
+      "sha256": "a0dfc4b68a92a3d940e284a93fb6990ec0e7c01b3a0f027aa5c609d605d158c8"
+    },
+    {
+      "path": "snapshots/stage_d/recovery/winner_19k.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:03:00.071698+00:00",
+      "sha256": "3a9935a5b5f3aa9507785f16f44995d153674b7a102321cacd7e9890b368e02b"
+    },
+    {
+      "path": "snapshots/stage_d/recovery/winner_20k.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:03:00.122207+00:00",
+      "sha256": "cb4c27bbb0ea8c20b47008335020c878c77b6c04582f81ece400021fdc97d006"
+    },
+    {
+      "path": "snapshots/stage_d/selected/quadro_stage_d_fchpa_recover_explore_16k_374718.pt",
+      "role": "snapshot",
+      "size_bytes": 6050241,
+      "mtime_utc": "2026-02-17T04:03:00.210713+00:00",
+      "sha256": "467e4b0915de1300d10afd5fc5ec358b4613f7abb0e23d0ebeddbe037cb95d01"
+    }
+  ]
+}

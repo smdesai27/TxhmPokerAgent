@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: txhm-poker-api
+    runtime: docker
+    plan: free
+    envVars:
+      # Serve the gate-passing champion directly (it is git-tracked, so it exists in the build).
+      # NOTE: the live service runs as a native python service (build: pip install -r
+      # requirements-render.txt), so the Dockerfile's serving_champion.pt copy does NOT run —
+      # point at the real tracked checkpoint, never at latest.pt (the gate-failing 49k run).
+      - key: CHECKPOINT_PATH
+        value: checkpoints/snapshots/interview_ready/interview_ready_1.pt
+      - key: CHECKPOINT_LABEL
+        value: "Stage D FCHPA 21k champion (passes all eval gates)"
+      - key: GAME_MODE
+        value: fchpa
+      - key: BOT_POLICY
+        value: sample
+      - key: POLICY_TEMPERATURE
+        value: "1.0"
+      - key: CORS_ORIGINS
+        sync: false  # Set manually after Vercel deploy to the Vercel URL

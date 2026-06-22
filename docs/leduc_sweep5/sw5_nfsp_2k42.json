@@ -1,0 +1,105 @@
+{
+  "game": "leduc_poker",
+  "method": "nfsp_lite (PPO best-responder + SL average policy)",
+  "obs_dim": 30,
+  "num_actions": 3,
+  "iterations": 2000,
+  "episodes_per_iter": 128,
+  "br_entropy": 0.05,
+  "sl_lr": 0.001,
+  "sl_updates": 4,
+  "sl_batch": 256,
+  "reservoir": 400000,
+  "seed": 42,
+  "initial_nash_conv": 4.5411143642357175,
+  "final_nash_conv": 2.1214993314343342,
+  "best_nash_conv": 1.4932068830907708,
+  "improvement_factor": 3.0411823141587186,
+  "curve": [
+    {
+      "iteration": 0,
+      "pi_bar_nash_conv": 4.5411143642357175
+    },
+    {
+      "iteration": 100,
+      "pi_bar_nash_conv": 3.6100893102793754
+    },
+    {
+      "iteration": 200,
+      "pi_bar_nash_conv": 2.205169764154188
+    },
+    {
+      "iteration": 300,
+      "pi_bar_nash_conv": 1.9076726150220984
+    },
+    {
+      "iteration": 400,
+      "pi_bar_nash_conv": 1.5969770729705937
+    },
+    {
+      "iteration": 500,
+      "pi_bar_nash_conv": 1.4932068830907708
+    },
+    {
+      "iteration": 600,
+      "pi_bar_nash_conv": 1.594952028360924
+    },
+    {
+      "iteration": 700,
+      "pi_bar_nash_conv": 1.5944523189208288
+    },
+    {
+      "iteration": 800,
+      "pi_bar_nash_conv": 1.6790163523403665
+    },
+    {
+      "iteration": 900,
+      "pi_bar_nash_conv": 1.5280845921736352
+    },
+    {
+      "iteration": 1000,
+      "pi_bar_nash_conv": 2.128347924210609
+    },
+    {
+      "iteration": 1100,
+      "pi_bar_nash_conv": 1.9924591240167084
+    },
+    {
+      "iteration": 1200,
+      "pi_bar_nash_conv": 2.4151139177548453
+    },
+    {
+      "iteration": 1300,
+      "pi_bar_nash_conv": 1.9804667108712737
+    },
+    {
+      "iteration": 1400,
+      "pi_bar_nash_conv": 1.9958548801086566
+    },
+    {
+      "iteration": 1500,
+      "pi_bar_nash_conv": 2.562254585309261
+    },
+    {
+      "iteration": 1600,
+      "pi_bar_nash_conv": 2.938976057630163
+    },
+    {
+      "iteration": 1700,
+      "pi_bar_nash_conv": 2.3115368628344575
+    },
+    {
+      "iteration": 1800,
+      "pi_bar_nash_conv": 2.381342944146574
+    },
+    {
+      "iteration": 1900,
+      "pi_bar_nash_conv": 2.3868176833877564
+    },
+    {
+      "iteration": 2000,
+      "pi_bar_nash_conv": 2.1214993314343342
+    }
+  ],
+  "note": "pi_bar = supervised average over the reservoir of best-responder actions; this is the convergent (low-exploitability) estimate, unlike the cycling current iterate."
+}

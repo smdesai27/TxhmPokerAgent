@@ -1,0 +1,14 @@
+# virtual environments
+venv/
+.venv/
+env/
+
+# python junk
+__pycache__/
+*.pyc
+
+# large caches (keep if you want — remove if not)
+.cache/
+
+# optional: skip node_modules if ever present
+node_modules/
