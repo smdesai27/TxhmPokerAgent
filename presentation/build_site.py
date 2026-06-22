@@ -19,7 +19,6 @@ import markdown
 # --------------------------------------------------------------------------- #
 REPO_URL = "https://github.com/smdesai27/TxhmPokerAgent"     # canonical repo (confirmed 2026-06-22)
 DEMO_URL = "https://txhm-poker-api.onrender.com"             # Render serves the playable demo at its root
-SLIDES_PDF = "AlphaHoldem_RL_deck.pdf"                       # relative to docs/ (built separately)
 AUTHOR = "Sanil Desai"
 BLOB = REPO_URL + "/blob/main/"
 
@@ -178,7 +177,6 @@ footer .flinks{{margin:0 0 14px;display:flex;gap:22px;justify-content:center;fle
   <div class="cta">
     {demo_btn}
     <a class="btn btn-ghost" href="{REPO_URL}" target="_blank" rel="noopener">View the code on GitHub</a>
-    <a class="btn btn-ghost" href="{SLIDES_PDF}" target="_blank" rel="noopener">Download the slides (PDF)</a>
   </div>
   <p class="demo-note">The live demo runs on a free instance — the first hand may take ~30s to wake.</p>
   <p class="meta">{htmllib.escape(AUTHOR)} · PyTorch · OpenSpiel · trained on a university GPU cluster</p>
@@ -190,7 +188,6 @@ footer .flinks{{margin:0 0 14px;display:flex;gap:22px;justify-content:center;fle
   <div class="flinks">
     <a href="{DEMO_URL}" target="_blank" rel="noopener">Live demo</a>
     <a href="{REPO_URL}" target="_blank" rel="noopener">GitHub repository</a>
-    <a href="{SLIDES_PDF}" target="_blank" rel="noopener">Slide deck (PDF)</a>
   </div>
   <p>Written by {htmllib.escape(AUTHOR)}. Every quantitative claim is backed by a committed config, script, or run log.</p>
 </footer>
