@@ -1,4 +1,13 @@
---extra-index-url https://download.pytorch.org/whl/cpu
+# Render deploy deps — CPU-only PyTorch.
+#
+# IMPORTANT: use --index-url (not --extra-index-url) for the PyTorch CPU wheel
+# index so `torch` resolves to the CPU build. With --extra-index-url pip still
+# prefers PyPI's default CUDA wheel, which drags in ~2.7GB of unused nvidia-*
+# CUDA libraries and pushes the process RSS over Render free tier's 512MB cap
+# (observed ~574MB) → OOM kill → "Application failed to respond" / 502.
+# The CPU build keeps the image small and RSS under the limit.
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
 torch>=2.1
 open_spiel>=1.2.0
 numpy>=1.24,<2.0

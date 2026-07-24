@@ -164,6 +164,14 @@ async def lifespan(app: FastAPI):
     config = _load_config(config_file, config_name)
     config.DEVICE = "cpu"
 
+    # Free-tier boxes are single-vCPU with a 512MB cap. Limit torch's intra-op
+    # thread pool so it doesn't spawn one worker per host core (inflating RSS and
+    # thrashing the shared core). Safe no-op if already constrained via env.
+    try:
+        torch.set_num_threads(1)
+    except Exception:
+        pass
+
     if game_mode == "fullgame":
         env_preset = "hunl_fullgame"
         betting_abstraction = "fullgame"

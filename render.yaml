@@ -18,5 +18,11 @@ services:
         value: sample
       - key: POLICY_TEMPERATURE
         value: "1.0"
+      # Single-vCPU free tier: cap native thread pools so torch/OpenMP/MKL don't
+      # over-subscribe the core or inflate RSS toward the 512MB OOM cap.
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: MKL_NUM_THREADS
+        value: "1"
       - key: CORS_ORIGINS
         sync: false  # Set manually after Vercel deploy to the Vercel URL
