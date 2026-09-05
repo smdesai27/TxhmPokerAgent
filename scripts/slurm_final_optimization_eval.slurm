@@ -32,11 +32,11 @@ CONFIG_NAME="${CONFIG_NAME:-final_optimization}"
 CONFIG_FILE="${CONFIG_FILE:-configs/training_configs.yaml}"
 STRICT_ABSTRACTION="${STRICT_ABSTRACTION:-true}"
 EPISODES_PER_SEED="${EPISODES_PER_SEED:-5000}"
-PROFILE="${PROFILE:-interview}"
+PROFILE="${PROFILE:-cert}"
 BASE_SEED="${BASE_SEED:-42}"
 HOLDOUT_SEED_BASE="${HOLDOUT_SEED_BASE:-92042}"
 HOLDOUT_SEED_COUNT="${HOLDOUT_SEED_COUNT:-5}"
-OUTPUT_JSON="${OUTPUT_JSON:-logs/final_opt/eval/eval_interview_${SLURM_JOB_ID}.json}"
+OUTPUT_JSON="${OUTPUT_JSON:-logs/final_opt/eval/eval_cert_${SLURM_JOB_ID}.json}"
 
 export STRICT_ABSTRACTION
 

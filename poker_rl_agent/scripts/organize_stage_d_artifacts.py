@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Organize Stage D interview artifacts without mutating source logs/checkpoints."""
+"""Organize Stage D champion artifacts without mutating source logs/checkpoints."""
 
 from __future__ import annotations
 
@@ -73,7 +73,7 @@ ACTIVE_STAGE_D_SCRIPTS = [
     "scripts/slurm_stage_d_fchpa_recovery_select.slurm",
     "scripts/slurm_stage_d_fchpa_recovery_prepare_winner.slurm",
     "scripts/submit_stage_d_fchpa_recovery_cycle.sh",
-    "scripts/submit_stage_d_fchpa_interview_continue.sh",
+    "scripts/submit_stage_d_fchpa_champion_continue.sh",
 ]
 
 ALIASES: List[Tuple[str, str]] = [
@@ -101,9 +101,9 @@ ALIASES: List[Tuple[str, str]] = [
     ("checkpoints/selected_21k_auto.pt", "checkpoints/snapshots/stage_d/recovery/selected_21k_auto_20260216_161321.pt"),
 ]
 
-INTERVIEW_SOURCE_CKPT = Path("checkpoints/snapshots/stage_d/recovery/selected_21k_auto_20260216_161321.pt")
-INTERVIEW_DEST_CKPT = Path("checkpoints/snapshots/interview_ready/interview_ready_1.pt")
-INTERVIEW_SIDECAR = Path("checkpoints/snapshots/interview_ready/interview_ready_1.json")
+CHAMPION_SOURCE_CKPT = Path("checkpoints/snapshots/stage_d/recovery/selected_21k_auto_20260216_161321.pt")
+CHAMPION_DEST_CKPT = Path("checkpoints/snapshots/champion/stage_d_fchpa_21k.pt")
+CHAMPION_SIDECAR = Path("checkpoints/snapshots/champion/stage_d_fchpa_21k.json")
 CHECKPOINT_ALIAS_REGISTRY = Path("checkpoints/checkpoint_aliases.json")
 BEST_EVAL_PATH = Path("logs/stage_d/eval/eval_selected_21k_auto_cert_20260216_161321.json")
 
@@ -203,12 +203,12 @@ def _iter_needed_dirs(run_dir: Path) -> Iterable[Path]:
         run_dir / "recovery",
         run_dir / "checkpoints",
         ROOT / "scripts" / "archived" / "legacy_stage_runs",
-        ROOT / "checkpoints" / "snapshots" / "interview_ready",
+        ROOT / "checkpoints" / "snapshots" / "champion",
     ]
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Organize Stage D artifacts and freeze interview checkpoint.")
+    parser = argparse.ArgumentParser(description="Organize Stage D artifacts and freeze champion checkpoint.")
     parser.add_argument("--run-label", default=RUN_LABEL_DEFAULT)
     parser.add_argument("--apply", action="store_true", help="Apply file moves/links/writes.")
     args = parser.parse_args()
@@ -235,9 +235,9 @@ def main() -> None:
         if not alias.exists():
             ops.append(_render_op("symlink", source, alias))
 
-    if INTERVIEW_SOURCE_CKPT.exists():
-        ops.append(_render_op("copy", ROOT / INTERVIEW_SOURCE_CKPT, ROOT / INTERVIEW_DEST_CKPT))
-        ops.append(_render_op("write", None, ROOT / INTERVIEW_SIDECAR))
+    if CHAMPION_SOURCE_CKPT.exists():
+        ops.append(_render_op("copy", ROOT / CHAMPION_SOURCE_CKPT, ROOT / CHAMPION_DEST_CKPT))
+        ops.append(_render_op("write", None, ROOT / CHAMPION_SIDECAR))
         ops.append(_render_op("write", None, ROOT / CHECKPOINT_ALIAS_REGISTRY))
     ops.append(_render_op("write", None, manifest_path))
     ops.append(_render_op("write", None, runs_index_path))
@@ -278,16 +278,16 @@ def main() -> None:
         elif status == "exists_non_symlink":
             print(f"warning: alias path exists as regular file, skipped: {alias_path}")
 
-    if not INTERVIEW_SOURCE_CKPT.exists():
-        raise FileNotFoundError(f"missing interview source checkpoint: {ROOT / INTERVIEW_SOURCE_CKPT}")
-    _ensure_parent(ROOT / INTERVIEW_DEST_CKPT)
-    shutil.copy2(ROOT / INTERVIEW_SOURCE_CKPT, ROOT / INTERVIEW_DEST_CKPT)
-    ckpt_sha = _sha256(ROOT / INTERVIEW_DEST_CKPT)
+    if not CHAMPION_SOURCE_CKPT.exists():
+        raise FileNotFoundError(f"missing champion source checkpoint: {ROOT / CHAMPION_SOURCE_CKPT}")
+    _ensure_parent(ROOT / CHAMPION_DEST_CKPT)
+    shutil.copy2(ROOT / CHAMPION_SOURCE_CKPT, ROOT / CHAMPION_DEST_CKPT)
+    ckpt_sha = _sha256(ROOT / CHAMPION_DEST_CKPT)
 
     cert_summary = _collect_eval_summary(ROOT / BEST_EVAL_PATH)
     sidecar = {
-        "alias": "interview_ready_1",
-        "source_checkpoint": str(INTERVIEW_SOURCE_CKPT),
+        "alias": "stage_d_fchpa_21k",
+        "source_checkpoint": str(CHAMPION_SOURCE_CKPT),
         "source_eval_cert": str(BEST_EVAL_PATH),
         "sha256": ckpt_sha,
         "created_at_utc": _utc_now(),
@@ -295,14 +295,14 @@ def main() -> None:
         "step": 21000,
         "gate_summary": cert_summary,
     }
-    _write_json(ROOT / INTERVIEW_SIDECAR, sidecar)
+    _write_json(ROOT / CHAMPION_SIDECAR, sidecar)
 
     alias_registry = _safe_json_load(ROOT / CHECKPOINT_ALIAS_REGISTRY, {})
     if not isinstance(alias_registry, dict):
         alias_registry = {}
-    alias_registry["interview_ready_1"] = {
-        "path": str(INTERVIEW_DEST_CKPT),
-        "source_checkpoint": str(INTERVIEW_SOURCE_CKPT),
+    alias_registry["stage_d_fchpa_21k"] = {
+        "path": str(CHAMPION_DEST_CKPT),
+        "source_checkpoint": str(CHAMPION_SOURCE_CKPT),
         "source_eval_cert": str(BEST_EVAL_PATH),
         "sha256": ckpt_sha,
         "created_at_utc": sidecar["created_at_utc"],
@@ -317,7 +317,7 @@ def main() -> None:
         "source_paths": source_rows,
         "alias_paths": alias_rows,
         "best_eval_path": str(BEST_EVAL_PATH),
-        "best_checkpoint_path": str(INTERVIEW_SOURCE_CKPT),
+        "best_checkpoint_path": str(CHAMPION_SOURCE_CKPT),
         "summary_metrics": cert_summary,
     }
     _write_json(manifest_path, manifest)
@@ -332,7 +332,7 @@ def main() -> None:
         "run_label": args.run_label,
         "manifest_path": str(manifest_path.relative_to(ROOT)),
         "best_eval_path": str(BEST_EVAL_PATH),
-        "best_checkpoint_path": str(INTERVIEW_SOURCE_CKPT),
+        "best_checkpoint_path": str(CHAMPION_SOURCE_CKPT),
         "created_at_utc": manifest["created_at_utc"],
     }
     runs = [row for row in runs if isinstance(row, dict) and row.get("run_label") != args.run_label]
@@ -341,7 +341,7 @@ def main() -> None:
     _write_json(runs_index_path, runs_index)
 
     print(f"[APPLY] Completed. Manifest: {manifest_path}")
-    print(f"[APPLY] interview_ready_1: {ROOT / INTERVIEW_DEST_CKPT}")
+    print(f"[APPLY] stage_d_fchpa_21k: {ROOT / CHAMPION_DEST_CKPT}")
 
 
 if __name__ == "__main__":

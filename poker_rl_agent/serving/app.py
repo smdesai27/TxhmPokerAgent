@@ -144,6 +144,8 @@ def _infer_checkpoint_num_actions(checkpoint_path: str) -> int:
     return int(policy_bias.shape[0])
 
 
+DEFAULT_CHECKPOINT = "checkpoints/snapshots/champion/stage_d_fchpa_21k.pt"
+
 game_manager: GameManager | None = None
 
 
@@ -152,9 +154,11 @@ async def lifespan(app: FastAPI):
     global game_manager
 
     args = _cli_args
-    checkpoint = args.get("checkpoint") or os.environ.get(
-        "CHECKPOINT_PATH", "checkpoints/snapshots/interview_ready/interview_ready_1.pt"
-    )
+    checkpoint = args.get("checkpoint") or os.environ.get("CHECKPOINT_PATH", DEFAULT_CHECKPOINT)
+    if not Path(checkpoint).exists() and Path(DEFAULT_CHECKPOINT).exists():
+        # A stale CHECKPOINT_PATH (e.g. an old env var on the host) must not take the demo down.
+        print(f"[serving] checkpoint {checkpoint!r} not found; falling back to {DEFAULT_CHECKPOINT!r}", file=sys.stderr)
+        checkpoint = DEFAULT_CHECKPOINT
     config_file = args.get("config_file") or os.environ.get("CONFIG_FILE", "configs/training_configs.yaml")
     config_name = args.get("config_name") or os.environ.get("CONFIG_NAME", "default")
     game_mode = args.get("game_mode") or os.environ.get("GAME_MODE", "fchpa")
@@ -349,7 +353,7 @@ def main():
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default="checkpoints/snapshots/interview_ready/interview_ready_1.pt",
+        default=DEFAULT_CHECKPOINT,
     )
     parser.add_argument("--config_file", type=str, default="configs/training_configs.yaml")
     parser.add_argument("--config_name", type=str, default="default")

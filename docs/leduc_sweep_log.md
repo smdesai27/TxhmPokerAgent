@@ -3,7 +3,7 @@
 > **Standing goal:** iterate hyperparameter sweeps on the Leduc validation harness until we reach
 > a RESPECTABLE, reportable exploitability result, then write it up. The loop is driven by OSCAR
 > SLURM sweeps — each round's job completion re-invokes the agent to analyze + launch the next
-> round. A fresh agent: read this file + HANDOFF.md, check "Best so far", launch the next round.
+> round. To continue: read this file, check "Best so far", launch the next round.
 
 ## Success criterion ("good performance worth reporting")
 Metric = **averaged-policy NashConv (exploitability)** on `leduc_poker` — opponent-independent,
@@ -269,15 +269,15 @@ and no-refresh magnets and α/τ/prox/epoch sweeps. This matches the literature:
 use **all-actions counterfactual values** (the variance-reducing ingredient our harness lacks); adding that
 is Deep-CFR-scale work, out of scope here. **Recommendation: write up the honest R1–R10 investigation.**
 Writeup landmines from the R7 review (don't say "converges" for the iterate, report both seeds, units ≈2×,
-never attach a Leduc number to the HUNL agent) all still apply. See HANDOFF.md §5.1.
+never attach a Leduc number to the HUNL agent) all still apply. See the write-up (`docs/WRITEUP.md`).
 
 **Why this doesn't contradict AlphaHoldem's "convergence":** AlphaHoldem converged a DIFFERENT quantity —
 training-loss + Elo + head-to-head win-rate (mbb/h vs Slumbot/DeepStack/humans), NOT exploitability (which it
 concedes is intractable on HUNL and never measures). Win-rate ≠ exploitability (Lisý&Bowling LBR: two bots
 tied head-to-head but ~1300 mbb/g apart in exploitability). We measured the exact, ungameable thing on Leduc;
 our cycling is the textbook signature of average-iterate-guaranteed self-play evaluated at the current iterate.
-Full verified framing + sources in **HANDOFF.md §5.3**.
+Full verified framing + sources in the write-up (`docs/WRITEUP.md`).
 
 ## Prior ablation (context — not part of this sweep)
 Trinal-Clip ≡ vanilla on Leduc (clips never fire on-policy / at this scale); simplified Elo-kBSP
-underperformed rolling. See HANDOFF.md §5.
+underperformed rolling. See the write-up (`docs/WRITEUP.md`).

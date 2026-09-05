@@ -17,8 +17,8 @@ ENV OMP_NUM_THREADS=1 \
 COPY poker_rl_agent/ poker_rl_agent/
 COPY public/ public/
 COPY configs/ configs/
-# Deploy the certified Stage D 21k champion (not the gate-failing latest.pt).
-COPY checkpoints/snapshots/interview_ready/interview_ready_1.pt checkpoints/serving_champion.pt
+# Deploy the certified Stage D 21k champion.
+COPY checkpoints/snapshots/champion/stage_d_fchpa_21k.pt checkpoints/serving_champion.pt
 
 RUN adduser --disabled-password --gecos '' appuser
 USER appuser

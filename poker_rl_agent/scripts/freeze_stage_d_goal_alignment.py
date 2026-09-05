@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Freeze Stage D interview alignment artifacts.
+"""Freeze Stage D champion alignment artifacts.
 
 This script codifies the operational decision:
-- keep `interview_ready_1` as canonical champion
+- keep `stage_d_fchpa_21k` as canonical champion
 - mark the latest 34k continuation as non-promoted exploratory branch
 """
 
@@ -21,7 +21,7 @@ from typing import Dict, Iterable, List, Tuple
 ROOT = Path(__file__).resolve().parents[2]
 
 DEFAULT_RUN_LABEL = "20260220_012455_stage_d_longrun_rebalance_34k_nonpromoted"
-DEFAULT_CHAMPION_CHECKPOINT = Path("checkpoints/snapshots/interview_ready/interview_ready_1.pt")
+DEFAULT_CHAMPION_CHECKPOINT = Path("checkpoints/snapshots/champion/stage_d_fchpa_21k.pt")
 DEFAULT_CHAMPION_CERT_EVAL = Path("logs/stage_d/eval/eval_selected_21k_auto_cert_20260216_161321.json")
 DEFAULT_BRANCH_CHECKPOINT = Path("checkpoints/snapshots/stage_d/recovery/longrun_rebalance_34k_20260220_012455.pt")
 DEFAULT_BRANCH_SCREEN_EVAL = Path("logs/stage_d/eval/eval_longrun_rebalance_34k_screen_20260220_012455.json")
@@ -281,7 +281,7 @@ def _ops_for_links(link_map: Dict[Path, Path]) -> List[str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Freeze Stage D interview goal-alignment pack.")
+    parser = argparse.ArgumentParser(description="Freeze Stage D champion goal-alignment pack.")
     parser.add_argument("--run_label", default=DEFAULT_RUN_LABEL)
     parser.add_argument("--champion_checkpoint", default=str(DEFAULT_CHAMPION_CHECKPOINT))
     parser.add_argument("--champion_eval", default=str(DEFAULT_CHAMPION_CERT_EVAL))
@@ -335,7 +335,7 @@ def main() -> None:
         run_dir / "eval" / "screen_34k.json": branch_screen_eval,
         run_dir / "slurm" / "gate_34k.out": branch_gate_log,
         run_dir / "metrics" / "train_34k_continuation.jsonl": branch_metrics,
-        run_dir / "checkpoints" / "champion_interview_ready_1.pt": champion_checkpoint,
+        run_dir / "checkpoints" / "champion_stage_d_fchpa_21k.pt": champion_checkpoint,
         run_dir / "checkpoints" / "nonpromoted_34k_snapshot.pt": branch_checkpoint,
     }
     dirs = [
@@ -385,7 +385,7 @@ def main() -> None:
     report_json = {
         "title": "Stage D Goal Alignment: Freeze Champion, Do Not Promote 34k",
         "created_at_utc": _utc_now(),
-        "goal": "interview_presentable_performance",
+        "goal": "champion_presentable_performance",
         "decision": manifest["decision"],
         "champion": manifest["canonical_champion"],
         "branch": manifest["exploratory_branch"],
@@ -399,8 +399,8 @@ def main() -> None:
             "branch_ci_floor_pass": _to_bool(branch_gate_summary.get("pass_ci_floor", False)),
             "ci95_lower_delta_bb100_branch_minus_champion": ci_lower_delta,
         },
-        "interview_narrative": [
-            "Champion remains interview_ready_1 based on stronger certified CI-lower.",
+        "champion_narrative": [
+            "Champion remains stage_d_fchpa_21k based on stronger certified CI-lower.",
             "34k branch is retained as reproducible, stable, non-promoted evidence.",
             "Promotion rule is strict: statistical gates plus CI-floor must pass.",
         ],
@@ -498,7 +498,7 @@ def main() -> None:
     aliases = _safe_json(outputs["checkpoint_aliases"], {})
     if not isinstance(aliases, dict):
         aliases = {}
-    champion_entry = aliases.get("interview_ready_1", {})
+    champion_entry = aliases.get("stage_d_fchpa_21k", {})
     if not isinstance(champion_entry, dict):
         champion_entry = {}
     champion_entry.update(
@@ -506,11 +506,11 @@ def main() -> None:
             "path": str(DEFAULT_CHAMPION_CHECKPOINT),
             "sha256": champion_sha,
             "status": "canonical_champion",
-            "frozen_for_interview": True,
+            "frozen_for_champion": True,
             "source_eval_cert": str(DEFAULT_CHAMPION_CERT_EVAL),
         }
     )
-    aliases["interview_ready_1"] = champion_entry
+    aliases["stage_d_fchpa_21k"] = champion_entry
     aliases[args.branch_alias] = {
         "path": str(Path(args.branch_checkpoint)),
         "sha256": branch_sha,

@@ -98,7 +98,7 @@ def build_profile_tiers(profile: str, episodes_per_seed: int, betting_abstractio
             {"name": "strong_50k", "iterations": 50000, "seeds": 3, "episodes_per_seed": eps},
         ]
 
-    if profile == "interview":
+    if profile == "cert":
         eps = int(episodes_per_seed)
         return [
             {"name": "weak_1k", "iterations": 1000, "seeds": 3, "episodes_per_seed": eps},
@@ -439,7 +439,7 @@ def main():
     parser.add_argument("--config_file", type=str, default="configs/training_configs.yaml")
     parser.add_argument("--config_name", type=str, default="quadro_stage_b")
     parser.add_argument("--episodes_per_seed", type=int, default=5000)
-    parser.add_argument("--profile", type=str, choices=["quick", "standard", "exhaustive", "interview"], default="standard")
+    parser.add_argument("--profile", type=str, choices=["quick", "standard", "exhaustive", "cert"], default="standard")
     parser.add_argument("--holdout_seed_base", type=int, default=10042)
     parser.add_argument("--holdout_seed_count", type=int, default=5)
     parser.add_argument("--require_robust_ci", action="store_true")
@@ -785,15 +785,15 @@ def main():
     except Exception as exc:
         print(f"Hand-strength correlation skipped: {exc}")
 
-    # -- W&B interview curve logging --
-    if args.profile == "interview" and solver_tiers:
+    # -- W&B cert curve logging --
+    if args.profile == "cert" and solver_tiers:
         try:
             import wandb as _wandb
             wandb_mode = os.environ.get("WANDB_MODE", "disabled")
             if wandb_mode != "disabled":
                 _wandb.init(
                     project=os.environ.get("WANDB_PROJECT", "alpha-holdem-poker"),
-                    tags=["eval", "interview"],
+                    tags=["eval", "cert"],
                     reinit=True,
                 )
                 columns = ["mccfr_iterations", "bb_per_100_mean", "bb_per_100_stderr", "ci95_lower"]
@@ -820,9 +820,9 @@ def main():
                     _wandb.log({"eval/hand_strength_correlation": hs_table})
 
                 _wandb.finish()
-                print("W&B interview curve logged.")
+                print("W&B cert curve logged.")
         except Exception as exc:
-            print(f"W&B interview logging skipped: {exc}")
+            print(f"W&B cert logging skipped: {exc}")
 
     output_json = args.output_json
     if not output_json:

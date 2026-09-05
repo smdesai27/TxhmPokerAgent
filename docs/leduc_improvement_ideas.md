@@ -2,7 +2,7 @@
 
 > Source: a 4-agent research workflow (3 online-literature lenses + 1 code audit of the harness) +
 > adversarial synthesis, 2026-06-17. Companion: [leduc_sweep_log.md](leduc_sweep_log.md) (the 7-round
-> result this builds on), HANDOFF.md §5.1.
+> result this builds on).
 
 ## Units caveat (state this in any writeup — it changes the comparison)
 OpenSpiel `exploitability.nash_conv()` returns **NashConv = sum of BOTH players' best-response gains**,

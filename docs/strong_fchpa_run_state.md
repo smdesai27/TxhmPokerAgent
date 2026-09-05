@@ -31,7 +31,7 @@ rigorous Stage 0 ladder (fixed strong reference) caught the −511 regression th
 lesson as AlphaHoldem (league win-rate ≠ strength) and the Leduc cycling finding: **measure vs a fixed strong
 reference, not a co-evolving league.** The eval discipline did its job.
 
-**Champion `interview_ready_1.pt` (21k) remains the strongest model.** To actually get stronger, the fix is to
+**Champion `stage_d_fchpa_21k.pt` (21k) remains the strongest model.** To actually get stronger, the fix is to
 ANCHOR the champion: keep it permanently in the league as a fixed opponent + evaluate-vs-champion every N
 iters and keep-best + lower LR + little/no entropy injection + shorter run. (Optional retry; off-track.)
 
@@ -45,7 +45,7 @@ iters and keep-best + lower LR + little/no entropy injection + shorter run. (Opt
 ## RUNNING NOW
 - **SLURM job 3330857** (`ah_strong_fchpa_gpu`), detached `sbatch`, OSCAR `gpu` partition, 48h walltime.
 - Preset `strong_fchpa_gpu` (configs/training_configs.yaml): warm-starts the champion
-  `checkpoints/snapshots/interview_ready/interview_ready_1.pt` (resumes at **step 21000**),
+  `checkpoints/snapshots/champion/stage_d_fchpa_21k.pt` (resumes at **step 21000**),
   `CFR_ITERATIONS=111000` (ABSOLUTE target step → **90,000 real iters**, ~9e7 hands).
 - **Full stack active:** S1 vectorized collector (`USE_VECTORIZED_COLLECTOR`, `ROLLOUT_BATCH_GAMES=512`)
   + S3 corrected PFSP (`PFSP_MODE=loss`) + S4 Trinal-Clip (`PPO_DUAL_CLIP=true`, delta1=3; value-clip off).
@@ -72,7 +72,7 @@ iters and keep-best + lower LR + little/no entropy injection + shorter run. (Opt
 1. **Stage 0 ladder (the headline strength signal):** new model vs the champion and prior checkpoints,
    with MANY pairs for tight CIs (canary oracle used 1500 → CI ±35; use **5k–20k pairs**).
    `python -m poker_rl_agent.scripts.evaluate_own_ladder --checkpoint_a <new> --checkpoint_b
-   checkpoints/snapshots/interview_ready/interview_ready_1.pt --config_file configs/training_configs.yaml
+   checkpoints/snapshots/champion/stage_d_fchpa_21k.pt --config_file configs/training_configs.yaml
    --config_name strong_fchpa_gpu --num_pairs 10000 --seed 42 --output_json logs/ladder_new_vs_champ.json`
    (and vs stage_d_12k_baseline.pt, the collapsed latest.pt). Run the self-play-vs-itself oracle first.
 2. **LBR on the new model** (`validate_lbr.py` pattern adapted to HUNL via Evaluator + LBR agent), reported

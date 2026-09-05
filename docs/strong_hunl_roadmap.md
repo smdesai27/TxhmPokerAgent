@@ -1,7 +1,7 @@
 # Path to a "strong" FCHPA full-HUNL bot — realistic roadmap
 
 > From a 4-lens design workflow (define-strong / end-to-end-RL / CFR+search / pragmatic-solo) + synthesis,
-> grounded in the verified literature (see HANDOFF.md §5.3) and our actual codebase. 2026-06-18.
+> grounded in the verified literature (see the write-up, `docs/WRITEUP.md`) and our actual codebase. 2026-06-18.
 
 ## The two "strong"s — and which is reachable solo
 - **Strong = wins head-to-head (mbb/h).** Reachable in principle but **throughput-capped**: AlphaHoldem used

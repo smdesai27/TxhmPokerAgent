@@ -1,7 +1,7 @@
 {
   "generated_utc": "2026-02-24T07:04:16.229355+00:00",
   "root": "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/checkpoints",
-  "count": 32,
+  "count": 31,
   "records": [
     {
       "path": "best_eval_final_optimization_low_temp.pt",
@@ -9,13 +9,6 @@
       "size_bytes": 6054196,
       "mtime_utc": "2026-02-24T00:56:49.083888+00:00",
       "sha256": "d55bd0726612f56fc7d8deefe108efecf8db47445c7da21206d923efedda1e2a"
-    },
-    {
-      "path": "latest.pt",
-      "role": "active",
-      "size_bytes": 139195775,
-      "mtime_utc": "2026-02-24T07:04:10.491343+00:00",
-      "sha256": "87b4c084f15090c4b46fe6c0989ef818e976a7cf2789bffcd35900af346ece04"
     },
     {
       "path": "snapshots/final_opt/475140_20260223_053629.pt",
@@ -32,7 +25,7 @@
       "sha256": "87b4c084f15090c4b46fe6c0989ef818e976a7cf2789bffcd35900af346ece04"
     },
     {
-      "path": "snapshots/interview_ready/interview_ready_1.pt",
+      "path": "snapshots/champion/stage_d_fchpa_21k.pt",
       "role": "snapshot",
       "size_bytes": 6050241,
       "mtime_utc": "2026-02-17T04:02:58.941901+00:00",

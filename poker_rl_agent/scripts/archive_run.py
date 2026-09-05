@@ -189,7 +189,7 @@ def main():
             "train/grad_norm",
         ],
     }
-    (archive_dir / "report" / "interview_summary.json").write_text(
+    (archive_dir / "report" / "champion_summary.json").write_text(
         json.dumps(report, indent=2),
         encoding="utf-8",
     )
@@ -218,7 +218,7 @@ def main():
         f"- Results are scoped to the configured abstraction.\n"
         f"- Fullgame free-bet-size performance is not implied by this snapshot.\n"
     )
-    (archive_dir / "report" / "interview_summary.md").write_text(md, encoding="utf-8")
+    (archive_dir / "report" / "champion_summary.md").write_text(md, encoding="utf-8")
 
     files = []
     for path in sorted(archive_dir.rglob("*")):

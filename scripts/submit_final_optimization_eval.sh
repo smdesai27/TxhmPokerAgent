@@ -7,7 +7,7 @@
 #   --config_name NAME     Config preset name (default: final_optimization)
 #   --config_file FILE     YAML config file (default: configs/training_configs.yaml)
 #   --episodes N           Episodes per seed (default: 5000)
-#   --profile PROFILE      Eval profile (default: interview)
+#   --profile PROFILE      Eval profile (default: cert)
 #   --seed N               Base seed (default: 42)
 #   --holdout_seed_base N  Holdout seed base (default: 92042)
 #   --holdout_seed_count N Number of holdout seeds (default: 5)
@@ -27,7 +27,7 @@ CONFIG_NAME="final_optimization"
 CONFIG_FILE="configs/training_configs.yaml"
 STRICT_ABSTRACTION="true"
 EPISODES_PER_SEED="5000"
-PROFILE="interview"
+PROFILE="cert"
 BASE_SEED="42"
 HOLDOUT_SEED_BASE="92042"
 HOLDOUT_SEED_COUNT="5"
@@ -106,4 +106,4 @@ echo ""
 JOB_ID=$(cd "${REPO_ROOT}" && sbatch --export="${EXPORTS}" "${SLURM_SCRIPT}" | awk '{print $NF}')
 echo "Submitted job ${JOB_ID}"
 echo "Logs: logs/final_opt/slurm/ah_final_optimization_eval_${JOB_ID}.out"
-echo "Eval: logs/final_opt/eval/eval_interview_${JOB_ID}.json"
+echo "Eval: logs/final_opt/eval/eval_cert_${JOB_ID}.json"

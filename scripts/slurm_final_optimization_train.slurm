@@ -35,7 +35,7 @@ WANDB_MODE="${WANDB_MODE:-online}"
 WANDB_PROJECT="${WANDB_PROJECT:-alpha-holdem-poker}"
 WANDB_ENTITY="${WANDB_ENTITY:-}"
 WANDB_RUN_GROUP="${WANDB_RUN_GROUP:-final_optimization}"
-WANDB_TAGS="${WANDB_TAGS:-final_opt,fchpa,interview}"
+WANDB_TAGS="${WANDB_TAGS:-final_opt,fchpa,cert}"
 RUN_ID="${SLURM_JOB_ID}_$(date +%Y%m%d_%H%M%S)"
 
 export STRICT_ABSTRACTION

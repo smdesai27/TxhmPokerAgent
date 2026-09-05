@@ -8,7 +8,8 @@ curriculum, and ships with an **automated evaluation harness** and a **live play
 - **Repo:** [smdesai27/TxhmPokerAgent](https://github.com/smdesai27/TxhmPokerAgent)
 - **Live demo:** [txhm-poker-api.onrender.com](https://txhm-poker-api.onrender.com) — play HUNL against the agent (free instance; first hand may take ~30s to wake)
 - **Writeup:** [smdesai27.github.io/TxhmPokerAgent](https://smdesai27.github.io/TxhmPokerAgent/) (source: [docs/WRITEUP.md](docs/WRITEUP.md))
-- **Best agent:** Stage D FCHPA (5-action) checkpoint at 21k steps — `checkpoints/snapshots/interview_ready/interview_ready_1.pt`
+- **Champion checkpoint:** Stage D FCHPA (5-action) at 21k steps — `checkpoints/snapshots/champion/stage_d_fchpa_21k.pt` (also attached to the [v1.0.0 release](https://github.com/smdesai27/TxhmPokerAgent/releases/tag/v1.0.0))
+- **History:** `main` is the cleaned release branch; the full Jan–Jun 2026 development history (85+ commits) is on [`history/dev-2026-01-to-06`](https://github.com/smdesai27/TxhmPokerAgent/tree/history/dev-2026-01-to-06)
 
 > **Scope note (please read).** This is an *AlphaHoldem-inspired* system, **not a faithful reproduction** of the
 > paper. It keeps the two-tower pseudo-siamese actor-critic silhouette and search-free single-forward-pass
@@ -55,8 +56,8 @@ behavior/aggression gates) and learned a **non-degenerate, balanced** strategy:
 - An opponent-independent metric (**exploitability / NashConv on the FCPA abstraction**, where it is tractable) is
   the right yardstick and is on the roadmap — the code path exists in
   [`evaluation/evaluator.py`](poker_rl_agent/evaluation/evaluator.py) but is disabled by default.
-- The most recent long run (`checkpoints/latest.pt`, ~49k steps) **failed its behavior gates** (entropy collapse →
-  fold-heavy play) and is intentionally **not** the deployed model. The behavior gates catching that is a feature,
+- The most recent long run (~49k steps) **failed its behavior gates** (entropy collapse → fold-heavy play) and is
+  intentionally **not** the deployed model, nor tracked in this repo. The behavior gates catching that is a feature,
   not a footnote.
 
 ## Differences from the paper
@@ -98,7 +99,7 @@ python scripts/debug_training.py --config_file configs/training_configs.yaml --c
 
 # Evaluate a checkpoint (multi-seed, with behavior gates)
 python poker_rl_agent/scripts/evaluate_complete.py \
-  --checkpoint checkpoints/snapshots/interview_ready/interview_ready_1.pt \
+  --checkpoint checkpoints/snapshots/champion/stage_d_fchpa_21k.pt \
   --config_file configs/training_configs.yaml --config_name quadro_stage_d_fchpa \
   --episodes_per_seed 5000 --profile standard --output_json logs/eval_champion.json
 
@@ -107,7 +108,7 @@ python -m poker_rl_agent.serving.app --host 0.0.0.0 --port 8000
 
 # Play against the agent in the terminal
 python poker_rl_agent/scripts/play_against_agent.py \
-  --checkpoint checkpoints/snapshots/interview_ready/interview_ready_1.pt \
+  --checkpoint checkpoints/snapshots/champion/stage_d_fchpa_21k.pt \
   --config_name quadro_stage_d_fchpa --game_mode fchpa --hands 20
 ```
 

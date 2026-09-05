@@ -1,6 +1,6 @@
 {
   "checkpoint_a": "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/checkpoints/snapshots/strong_fchpa/strong_fchpa_gpu_3330857.pt",
-  "checkpoint_b": "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/checkpoints/snapshots/interview_ready/interview_ready_1.pt",
+  "checkpoint_b": "/oscar/home/smdesai/antigravity_poker/anitgravity-txhm/checkpoints/snapshots/champion/stage_d_fchpa_21k.pt",
   "config_name": "strong_fchpa_gpu",
   "config_name_b": "strong_fchpa_gpu",
   "betting_abstraction": "fchpa",

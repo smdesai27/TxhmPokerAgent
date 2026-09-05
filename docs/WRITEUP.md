@@ -26,7 +26,7 @@ This caught a regression. A later 49k-step run scored well on win-rate but had c
 
 Two corrections made the numbers trustworthy: **Student-t confidence intervals** (the prior Normal intervals were ~40% too narrow; the champion's headline half-width went from ±75 to ±106) and **duplicate mirrored-seat hands** (play both holdings of each deal under a shared RNG to cancel hole-card luck).
 
-**Champion:** the Stage D FCHPA 21k checkpoint (`interview_ready_1`). It passes every gate and plays a balanced strategy — entropy 1.44 bits, fold 46% / call 43% / raise 11%.
+**Champion:** the Stage D FCHPA 21k checkpoint (`stage_d_fchpa_21k`). It passes every gate and plays a balanced strategy — entropy 1.44 bits, fold 46% / call 43% / raise 11%.
 
 **One number retired.** "+897 bb/100 vs MCCFR-ES" is not a strength result. OpenSpiel's MCCFR average policy is uniform-random on unvisited information states, and HUNL has far too many for it to be otherwise. The harness's zero-iteration (uniform) control scores *higher* (970 bb/100) than the 5k- and 10k-iteration "solver" tiers (898, 934) — adding solver iterations makes the opponent easier, not harder. The figure is a sanity check against a near-random control, not evidence of strength, and is never placed next to AlphaHoldem's +11 mbb/h vs Slumbot.
 

@@ -56,7 +56,7 @@ SCREEN_JSON="${SCREEN_JSON:-logs/stage_d/eval/eval_longrun_rebalance_34k_screen_
 CERT_JSON="${CERT_JSON:-logs/stage_d/eval/eval_longrun_rebalance_34k_cert_${STAMP}.json}"
 
 BASELINE_EVAL_JSON="${BASELINE_EVAL_JSON:-logs/stage_d/eval/eval_selected_21k_auto_cert_20260216_161321.json}"
-ANCHOR_CKPT="checkpoints/snapshots/interview_ready/interview_ready_1.pt"
+ANCHOR_CKPT="checkpoints/snapshots/champion/stage_d_fchpa_21k.pt"
 
 if [[ ! -f "${CONFIG_FILE}" ]]; then
   echo "Config file not found: ${CONFIG_FILE}"
@@ -67,9 +67,9 @@ if [[ ! -f "${ANCHOR_CKPT}" ]]; then
   exit 2
 fi
 
-# Hard guard: never allow writes to interview_ready_1
-if [[ "${SNAPSHOT_PATH}" == *"checkpoints/snapshots/interview_ready/interview_ready_1.pt" ]]; then
-  echo "Refusing to run: SNAPSHOT_PATH points to interview_ready_1 (immutable anchor)."
+# Hard guard: never allow writes to stage_d_fchpa_21k
+if [[ "${SNAPSHOT_PATH}" == *"checkpoints/snapshots/champion/stage_d_fchpa_21k.pt" ]]; then
+  echo "Refusing to run: SNAPSHOT_PATH points to stage_d_fchpa_21k (immutable anchor)."
   exit 3
 fi
 

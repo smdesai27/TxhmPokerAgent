@@ -28,8 +28,8 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
   echo "Config file not found: ${CONFIG_FILE}"
   exit 2
 fi
-if [[ ! -f "checkpoints/snapshots/interview_ready/interview_ready_1.pt" ]]; then
-  echo "Missing required checkpoint: checkpoints/snapshots/interview_ready/interview_ready_1.pt"
+if [[ ! -f "checkpoints/snapshots/champion/stage_d_fchpa_21k.pt" ]]; then
+  echo "Missing required checkpoint: checkpoints/snapshots/champion/stage_d_fchpa_21k.pt"
   exit 2
 fi
 

@@ -1738,7 +1738,7 @@ quadro_stage_d_fchpa_evfirst_interview_continue_24k:
   ENV_PRESET: "hunl_fchpa"
   BETTING_ABSTRACTION: "fchpa"
   STRICT_ABSTRACTION: true
-  RESUME_FROM: "checkpoints/snapshots/interview_ready/interview_ready_1.pt"
+  RESUME_FROM: "checkpoints/snapshots/champion/stage_d_fchpa_21k.pt"
   CFR_ITERATIONS: 24000
   ROLLOUT_EPISODES: 384
   MIN_ROLLOUT_TRANSITIONS: 1152
@@ -1796,7 +1796,7 @@ quadro_stage_d_fchpa_evfirst_interview_continue_24k:
   CHECKPOINT_SAVE_LEAGUE: false
   CHECKPOINT_SAVE_EXTRA: false
   CHECKPOINT_SAVE_BEST_EVAL: true
-  CHECKPOINT_BEST_EVAL_PATH: "checkpoints/best_eval_interview_ready_24k.pt"
+  CHECKPOINT_BEST_EVAL_PATH: "checkpoints/best_eval_champion_24k.pt"
   WANDB_MODE: "online"
   WANDB_REQUIRE_ONLINE: true
 
@@ -1961,7 +1961,7 @@ strong_fchpa_gpu_canary:
   ENV_PRESET: "hunl_fchpa"
   BETTING_ABSTRACTION: "fchpa"
   STRICT_ABSTRACTION: true
-  RESUME_FROM: "checkpoints/snapshots/interview_ready/interview_ready_1.pt"
+  RESUME_FROM: "checkpoints/snapshots/champion/stage_d_fchpa_21k.pt"
   USE_VECTORIZED_COLLECTOR: true
   ROLLOUT_BATCH_GAMES: 512
   ROLLOUT_EPISODES: 1024
@@ -2000,7 +2000,7 @@ strong_fchpa_gpu:
   ENV_PRESET: "hunl_fchpa"
   BETTING_ABSTRACTION: "fchpa"
   STRICT_ABSTRACTION: true
-  RESUME_FROM: "checkpoints/snapshots/interview_ready/interview_ready_1.pt"
+  RESUME_FROM: "checkpoints/snapshots/champion/stage_d_fchpa_21k.pt"
   USE_VECTORIZED_COLLECTOR: true
   ROLLOUT_BATCH_GAMES: 512
   ROLLOUT_EPISODES: 1024

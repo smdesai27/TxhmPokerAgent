@@ -7,9 +7,9 @@ services:
       # Serve the gate-passing champion directly (it is git-tracked, so it exists in the build).
       # NOTE: the live service runs as a native python service (build: pip install -r
       # requirements-render.txt), so the Dockerfile's serving_champion.pt copy does NOT run —
-      # point at the real tracked checkpoint, never at latest.pt (the gate-failing 49k run).
+      # point at the real tracked checkpoint (the certified Stage D 21k champion).
       - key: CHECKPOINT_PATH
-        value: checkpoints/snapshots/interview_ready/interview_ready_1.pt
+        value: checkpoints/snapshots/champion/stage_d_fchpa_21k.pt
       - key: CHECKPOINT_LABEL
         value: "Stage D FCHPA 21k champion (passes all eval gates)"
       - key: GAME_MODE
